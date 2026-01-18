@@ -11,20 +11,17 @@ A sophisticated, AI-powered Mumble bot designed to act as a digital butler for y
 * **🗣️ Voice-to-Text (STT):** Listens to users in a Mumble channel using `faster-whisper`.
 * **🧠 AI Personality:** Powered by a local LLM (e.g., `qwen2.5-3b-instruct`) via `llama-cpp-python`.
 * **🔊 Text-to-Speech (TTS):** Generates high-quality voice responses using `Kokoro-82M`.
-* **🎶 Music & Audio Control:**
-    * Play/Queue music via YouTube queries.
-    * Control volume, pause, stop, skip, and repeat.
-    * Play local audio files.
-* **🎤 Smart Recommendations:** Ask the bot to recommend music based on a vibe or description.
-* **👂 Context Awareness:** Remembers conversation history (configurable context window).
+* **🤖 Bot-to-Bot Control:** Acts as a voice interface for **[botamusique](https://github.com/azlux/botamusique)**. Speak commands to "Obama," and he translates them into text commands (`!play`, `!volume`) for the music bot.
+* **🎤 Smart Recommendations:** Ask the bot to recommend music based on a vibe; it searches and queues the song automatically.
 * **🔧 Extensive Configuration:** Easy-to-edit `config.py` for tweaking triggers, models, and paths.
 
 ## 🛠️ Prerequisites
 
 * **Python 3.10+**
 * **Mumble Server (Murmur)**
-* **NVIDIA GPU (Recommended):** For `cuda` acceleration of Whisper and TTS models. CPU usage is supported but slower.
-* **FFmpeg:** Installed and added to your system PATH (required for audio processing).
+* **[Botamusique](https://github.com/azlux/botamusique):** **REQUIRED.** You must have `botamusique` running in the same channel. This bot handles the actual music playback, while "Obama" acts as the voice interface for it.
+* **NVIDIA GPU (Recommended):** For `cuda` acceleration of Whisper and TTS models.
+* **FFmpeg:** Installed and added to your system PATH.
 
 ## 📦 Installation
 
@@ -67,7 +64,18 @@ Edit `config.py` to match your environment.
 
 ## 🚀 Usage
 
-Run the bot using the main entry point:
+1.  **Start Botamusique:** Ensure your music bot is running and connected to the target channel.
+2.  **Start Mumble Butler:**
+    ```bash
+    python main.py
+    ```
+3.  **Verify Connection:** Speak a command (e.g., *"Obama, play lo-fi hip hop"*). "Obama" should respond verbally and immediately send a `!yplay` text command to the channel, which `botamusique` will pick up.
 
-```bash
-python main.py
+## 🧩 How It Works
+
+```mermaid
+graph LR
+    User(User via Voice) -->|Spoken Command| Butler(Mumble Butler)
+    Butler -->|TTS Response| User
+    Butler -->|Text Command !play| MusicBot(Botamusique)
+    MusicBot -->|Audio Stream| MumbleServer
