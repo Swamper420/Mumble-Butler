@@ -51,42 +51,71 @@ class MadnessBot:
         self.audio_lock = threading.Lock()
         self.announcement_cooldown = {}
 
+        # Mumble instance placeholder
+        self.mumble = None
+        self.my_channel_id = None
+
         # Concurrency
         self.loop = asyncio.new_event_loop()
         self.queue = asyncio.Queue()
         self.executor = ThreadPoolExecutor(max_workers=4)
 
-        # Mumble Setup
+    def setup_mumble(self):
+        """Initializes the Mumble connection and callbacks."""
+        print(f"🔌 Connecting to {config.SERVER_IP}...")
         self.mumble = pymumble.Mumble(config.SERVER_IP, config.BOT_USERNAME, password=config.PASSWORD, port=config.SERVER_PORT)
         self.mumble.callbacks.set_callback("user_updated", self.on_user_updated)
         self.mumble.callbacks.set_callback("text_received", self.on_text_received)
         self.mumble.set_receive_sound(True)
         self.mumble.callbacks.set_callback("sound_received", self.on_sound_received)
 
-        self.my_channel_id = None
-
     def run(self):
         print("🚀 Starting Bot...")
         threading.Thread(target=self._start_async_loop, daemon=True).start()
 
-        self.mumble.start()
-        self.mumble.is_ready()
+        # Reconnection Loop
+        while True:
+            try:
+                self.setup_mumble()
+                self.mumble.start()
+                self.mumble.is_ready()
 
-        channel = self.mumble.channels.find_by_name(config.TARGET_CHANNEL)
-        if channel: channel.move_in()
+                channel = self.mumble.channels.find_by_name(config.TARGET_CHANNEL)
+                if channel: channel.move_in()
 
-        try:
-            while True:
-                if self.mumble.users.myself:
-                    self.my_channel_id = self.mumble.users.myself['channel_id']
-                time.sleep(1)
-        except KeyboardInterrupt:
-            self.shutdown()
+                print("✅ Connected!")
+
+                # Main monitoring loop
+                while self.mumble.is_alive():
+                    if self.mumble.users.myself:
+                        self.my_channel_id = self.mumble.users.myself['channel_id']
+                    time.sleep(1)
+
+                print("⚠️ Disconnected from server.")
+
+            except KeyboardInterrupt:
+                self.shutdown()
+                break
+            except Exception as e:
+                print(f"⚠️ Connection error: {e}")
+            finally:
+                # Cleanup before retry
+                if self.mumble:
+                    try: self.mumble.stop()
+                    except: pass
+
+            print(f"🔄 Reconnecting in {config.RECONNECT_DELAY} seconds...")
+            time.sleep(config.RECONNECT_DELAY)
+
+            # Reset user streams to prevent stale data
+            with self.audio_lock:
+                self.user_streams = {}
 
     def shutdown(self):
         print("\nShutting down...")
         self.save_stats()
-        self.mumble.stop()
+        if self.mumble:
+            self.mumble.stop()
 
     def _start_async_loop(self):
         asyncio.set_event_loop(self.loop)
@@ -100,9 +129,12 @@ class MadnessBot:
     async def tts_worker(self):
         while True:
             text = await self.queue.get()
-            pcm_data = await self.loop.run_in_executor(self.executor, self.voice.generate_pcm, text)
-            if pcm_data:
-                self.mumble.sound_output.add_sound(pcm_data)
+            # Only play sound if mumble is actually connected
+            if self.mumble and self.mumble.sound_output:
+                pcm_data = await self.loop.run_in_executor(self.executor, self.voice.generate_pcm, text)
+                if pcm_data:
+                    try: self.mumble.sound_output.add_sound(pcm_data)
+                    except: pass
             self.queue.task_done()
 
     async def audio_processing_worker(self):
@@ -142,21 +174,17 @@ class MadnessBot:
             clean = re.sub(r'[^\w\s]', '', text).lower().strip()
 
             # --- KEYWORD MATCHING LOGIC ---
-            # 1. Sort keywords by length (descending) so "Mr President" matches before "Mr"
-            # Note: Ensure ACTIVATION_KEYWORDS is a list in config.py
             sorted_keywords = sorted(config.ACTIVATION_KEYWORDS, key=len, reverse=True)
-
-            # 2. Build pattern: ^(obama|barack|computer)\b
             pattern = r"^(" + "|".join(re.escape(k.lower()) for k in sorted_keywords) + r")\b"
 
-            # 3. Check for match
+            # Check for match
             if not re.search(pattern, clean):
                 return
 
-            # 4. Remove the trigger word from the command
+            # Remove the trigger word from the command
             content = re.sub(pattern, "", clean, count=1).strip()
 
-            if self.chime_pcm:
+            if self.chime_pcm and self.mumble and self.mumble.sound_output:
                 self.mumble.sound_output.add_sound(self.chime_pcm)
 
             cmd_out = None
@@ -173,7 +201,29 @@ class MadnessBot:
             if any(w in content for w in config.VOICE_TRIGGERS['VOLUME']) and (m := re.search(r"(\d+)", content)):
                 cmd_out = f"{config.MUMBLE_COMMANDS['VOLUME']} {m.group(1)}"
 
-            # 3. Recommend
+            # 3. Mode (New)
+            elif any(w in content for w in config.VOICE_TRIGGERS['MODE']):
+                # Extract mode arguments
+                # Updated to handle "one shot", "one-shot", "oneshot"
+                modes = ["one-shot", "one shot", "oneshot", "autoplay", "repeat", "random"]
+                target_mode = None
+
+                for m in modes:
+                    if m in content:
+                        # Normalize variations to "one-shot"
+                        if m in ["oneshot", "one shot"]:
+                             target_mode = "one-shot"
+                        else:
+                             target_mode = m
+                        break
+
+                if target_mode:
+                    cmd_out = f"{config.MUMBLE_COMMANDS['MODE']} {target_mode}"
+                    self.say_async(f"Setting mode to {target_mode}")
+                else:
+                    self.say_async("Available modes are: one-shot, autoplay, repeat, and random.")
+
+            # 4. Recommend
             elif any(w in content for w in config.VOICE_TRIGGERS['RECOMMEND']):
                 triggers = config.VOICE_TRIGGERS['RECOMMEND']
                 desc = content
@@ -186,7 +236,7 @@ class MadnessBot:
                     cmd_out = f"{config.MUMBLE_COMMANDS['PLAY_YOUTUBE']} {song}"
                     self.say_async(f"Queued {song}")
 
-            # 4. Play / Queue
+            # 5. Play / Queue
             elif any(w in content for w in config.VOICE_TRIGGERS['PLAY_MUSIC']):
                 # If "music" is triggered explicitly -> !play
                 cmd_out = config.MUMBLE_COMMANDS['PLAY_GENERIC']
@@ -198,22 +248,22 @@ class MadnessBot:
                 if q:
                     cmd_out = f"{config.MUMBLE_COMMANDS['PLAY_YOUTUBE']} {q.group(1)}"
 
-            # 5. Stop / Pause
+            # 6. Stop / Pause
             elif any(w in content for w in config.VOICE_TRIGGERS['STOP']):
                 cmd_out = config.MUMBLE_COMMANDS['PAUSE']
 
-            # 6. Skip / Next
+            # 7. Skip / Next
             elif any(w in content for w in config.VOICE_TRIGGERS['SKIP']):
                 cmd_out = config.MUMBLE_COMMANDS['SKIP']
 
-            # 7. File
+            # 8. File
             elif any(w in content for w in config.VOICE_TRIGGERS['PLAY_FILE']):
                 triggers = "|".join(config.VOICE_TRIGGERS['PLAY_FILE'])
                 q = re.search(rf"(?:{triggers})\s+(.*)", content)
                 if q:
                     cmd_out = f"{config.MUMBLE_COMMANDS['FILE']} {q.group(1)}"
 
-            # 8. Repeat
+            # 9. Repeat
             elif any(w in content for w in config.VOICE_TRIGGERS['REPEAT']):
                 m = re.search(r"(\d+)", content)
                 count = m.group(1) if m else "1"
@@ -232,8 +282,9 @@ class MadnessBot:
         self.loop.call_soon_threadsafe(self.queue.put_nowait, text)
 
     def send_chat(self, text):
-        try: self.mumble.channels[self.my_channel_id].send_text_message(text)
-        except: pass
+        if self.mumble and self.my_channel_id is not None:
+            try: self.mumble.channels[self.my_channel_id].send_text_message(text)
+            except: pass
 
     def on_sound_received(self, user, sound_chunk):
         if not self.listening_enabled or not user: return
@@ -289,6 +340,12 @@ class MadnessBot:
             elif cmd == config.TEXT_TRIGGERS['FORGET']:
                 self.brain.reset_memory()
                 self.send_chat("Memory wiped.")
+
+            # Memory Toggle
+            elif cmd == config.TEXT_TRIGGERS['MEMORY']:
+                new_state = self.brain.toggle_memory()
+                state_str = "ENABLED" if new_state else "DISABLED"
+                self.send_chat(f"Context Memory: {state_str}")
 
             # Voice Change
             elif cmd == config.TEXT_TRIGGERS['VOICE']:
