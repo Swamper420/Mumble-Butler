@@ -1,4 +1,15 @@
 import numpy as np
+import ssl
+
+def patch_ssl():
+    """Fixes SSL context for legacy/unverified connections."""
+    if not hasattr(ssl, 'wrap_socket'):
+        def wrap_socket(sock, **kwargs):
+            context = ssl.SSLContext(kwargs.get('ssl_version', ssl.PROTOCOL_TLS_CLIENT))
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            return context.wrap_socket(sock, server_hostname=kwargs.get('server_hostname'))
+        ssl.wrap_socket = wrap_socket
 
 def pcm_to_float(raw_bytes: bytes) -> np.ndarray:
     """Converts raw PCM bytes to normalized float32 (-1.0 to 1.0)."""
