@@ -16,12 +16,12 @@ CHIME_FILE = "chime.wav"
 LLM_MODEL_PATH = "models/qwen2.5-3b-instruct-q4_k_m.gguf"
 
 # --- AI CONFIG ---
-WHISPER_MODEL_SIZE = "deepdml/faster-whisper-large-v3-turbo-ct2"
+WHISPER_MODEL_SIZE = "deepdml/faster-distil-whisper-large-v3.5"
 WHISPER_DEVICE = "cuda"
 WHISPER_COMPUTE = "float16"
 
-#Upto 32k and sum
-LLM_CONTEXT_SIZE = 10000
+#Upto 128k or sum
+LLM_CONTEXT_SIZE = 3000 #brotha,you need to increse this if ya want ya memory feature to work 
 LLM_GPU_LAYERS = -1
 ACTIVATION_KEYWORDS = ["obama", "opama", "opal", "opa"]
 MEMORY_ENABLED = False
@@ -89,14 +89,3 @@ TEXT_TRIGGERS = {
 SILENCE_THRESHOLD = 0.5
 MIN_AUDIO_LENGTH = 0.3
 POLL_RATE = 0.1
-
-# --- SSL FIX (Python 3.12+) ---
-#Lmao, fix it fo reeal
-def patch_ssl():
-    if not hasattr(ssl, 'wrap_socket'):
-        def wrap_socket(sock, **kwargs):
-            context = ssl.SSLContext(kwargs.get('ssl_version', ssl.PROTOCOL_TLS_CLIENT))
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-            return context.wrap_socket(sock, server_hostname=kwargs.get('server_hostname'))
-        ssl.wrap_socket = wrap_socket
