@@ -21,7 +21,7 @@ WHISPER_COMPUTE = "float16"
 #Upto 32k and sum
 LLM_CONTEXT_SIZE = 10000
 LLM_GPU_LAYERS = -1
-ACTIVATION_KEYWORD = "obama"
+ACTIVATION_KEYWORDS = ["obama", "opama"]
 
 SYSTEM_PROMPT = (
     "You are 'Obama', a suave and savvy digital butler from the 2000s."
