@@ -1,5 +1,6 @@
 import threading
 from datetime import datetime
+import random
 import config
 
 try:
@@ -86,13 +87,45 @@ class Brain:
             self.history = []
 
     def recommend_song(self, description):
-        if not self.llm: return None
-        prompt = (
-            f"<|im_start|>system\nYou are a fancy DJ who dislikes Daft Punk and DJ Snake. Output ONLY ONE search query (Artist - Title), nothing else.\n<|im_end|>\n"
-            f"<|im_start|>user\nRecommend: {description}\n<|im_end|>\n<|im_start|>assistant\n"
-        )
-        try:
-            with self.lock:
-                output = self.llm(prompt, max_tokens=90, stop=["<|im_end|>", "\n"], echo=False)
-            return output['choices'][0]['text'].strip().replace('"', '')
-        except: return None
+            if not self.llm: return None
+
+            # 1. Define a list of dynamic DJ personas to ensure variety
+            dj_personas = [
+                "You are an underground DJ who loves obscure, underrated gems. Avoid mainstream top 40.",
+                "You are a music historian looking for timeless classics that people often forget.",
+                "You are a trend-setter looking for the absolute freshest, most unique sounds from the last few years.",
+                "You are an eclectic curator who mixes genres unexpectedly. Surprise the user.",
+                "You are a 'crate digger' looking for rare vinyl cuts and b-sides."
+            ]
+
+            # 2. Pick a random persona
+            current_persona = random.choice(dj_personas)
+
+            # 3. Construct the prompt with positive constraints
+            # We explicitly ask for "Artist - Title" format.
+            prompt = (
+                f"<|im_start|>system\n{current_persona} "
+                f"Your task is to recommend a song based on the user's vibe. "
+                f"Output ONLY ONE search query in the format 'Artist - Title'. Do not output any other text.\n<|im_end|>\n"
+                f"<|im_start|>user\nRecommend a song for this vibe: {description}\n<|im_end|>\n"
+                f"<|im_start|>assistant\n"
+            )
+
+            try:
+                with self.lock:
+                    # 4. Increase temperature to 0.85 (default is usually lower) for more creativity
+                    output = self.llm(
+                        prompt,
+                        max_tokens=90,
+                        stop=["<|im_end|>", "\n"],
+                        echo=False,
+                        temperature=0.90,  # Higher temp = more "unique" / "fresh" choices
+                        top_p=0.95         # Nucleus sampling for quality
+                    )
+
+                result = output['choices'][0]['text'].strip().replace('"', '')
+                print(f"🎵 Recommendation [{current_persona}]: {result}") # Debug log
+                return result
+            except Exception as e:
+                print(f"Recommendation error: {e}")
+                return None
