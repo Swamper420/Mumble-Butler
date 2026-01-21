@@ -7,6 +7,8 @@ BOT_USERNAME = "Obama"
 PASSWORD = "yo mumble server password"
 TARGET_CHANNEL = "Michelle Obama's Lair"
 IGNORED_USERS = ["YoMusicBot"]
+RECONNECT_DELAY = 5
+
 
 # --- PATHS ---
 STATS_FILE = "user_stats.csv"
@@ -21,7 +23,9 @@ WHISPER_COMPUTE = "float16"
 #Upto 32k and sum
 LLM_CONTEXT_SIZE = 10000
 LLM_GPU_LAYERS = -1
-ACTIVATION_KEYWORDS = ["obama", "opama"]
+ACTIVATION_KEYWORDS = ["obama", "opama", "opal", "opa"]
+MEMORY_ENABLED = False
+
 
 SYSTEM_PROMPT = (
     "You are 'Obama', a suave and savvy digital butler from the 2000s."
@@ -49,7 +53,9 @@ VOICE_TRIGGERS = {
     'STOP': ["stop", "silence"],
     'SKIP': ["skip", "next"],
     'PLAY_FILE': ["file", "f"],         # New: Local file playback
-    'REPEAT': ["repeat"]                # New: Repeat song
+    'REPEAT': ["repeat"],                # New: Repeat song
+    'MODE':["mode"]
+
 }
 
 # --- OUTPUT COMMANDS ---
@@ -61,7 +67,9 @@ MUMBLE_COMMANDS = {
     'PAUSE': "!pause",
     'SKIP': "!skip",
     'FILE': "!file",    # Maps to !file or !f
-    'REPEAT': "!repeat"
+    'REPEAT': "!repeat",
+    'MODE': "!mode"
+
 }
 
 # --- TEXT CHAT TRIGGERS ---
@@ -71,7 +79,10 @@ TEXT_TRIGGERS = {
     'LISTEN': "?listen",
     'FORGET': "?forget",
     'VOICE': "?voice",
-    'SAY': "?say"
+    'SAY': "?say",
+    'MEMORY': "?memory"
+
+    
 }
 
 # --- AUDIO PARAMETERS ---
