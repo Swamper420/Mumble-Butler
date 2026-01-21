@@ -7,25 +7,33 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pymumble_py3 as pymumble
 import config
-from modules.audio_buffer import UserVoiceStream
+
+# Utilities
+from utils import patch_ssl
+
+# Modules
 from modules.brain import Brain
 from modules.ears import Ear
 from modules.voice import Voice
+from modules.audio_manager import AudioManager
 
-# Import new handlers
+# Logic Handlers
 from handlers.text import TextHandler
 from handlers.voice import VoiceHandler
 
 class MadnessBot:
     def __init__(self):
-        self.user_stats = {}
-        self.load_stats()
+        # Apply SSL patch for legacy/unverified connections
+        patch_ssl()
+
+        # Initialize basic audio resources
         self._load_chime()
 
         # Core Modules
         self.brain = Brain()
         self.ear = Ear()
         self.voice = Voice()
+        self.audio_manager = AudioManager()
 
         # Logic Handlers
         self.text_handler = TextHandler(self)
@@ -33,10 +41,6 @@ class MadnessBot:
 
         # State
         self.listening_enabled = True
-        self.user_streams = {}
-        self.audio_lock = threading.Lock()
-
-        # Mumble Connection
         self.mumble = None
         self.my_channel_id = None
 
@@ -46,7 +50,7 @@ class MadnessBot:
         self.executor = ThreadPoolExecutor(max_workers=4)
 
     def _load_chime(self):
-        """Handles loading the chime sound effect."""
+        """Loads the chime sound effect into memory."""
         self.chime_pcm = None
         if os.path.exists(config.CHIME_FILE):
             try:
@@ -59,26 +63,35 @@ class MadnessBot:
                 with open('chime.raw', 'rb') as f:
                     self.chime_pcm = f.read()
 
-                if os.path.exists('chime.raw'): os.remove('chime.raw')
+                if os.path.exists('chime.raw'):
+                    os.remove('chime.raw')
                 print(f"🔔 Chime loaded ({len(self.chime_pcm)} bytes)")
             except Exception as e:
                 print(f"⚠️ Chime load error: {e}")
 
     def setup_mumble(self):
+        """Initializes Mumble connection and callbacks."""
         print(f"🔌 Connecting to {config.SERVER_IP}...")
-        self.mumble = pymumble.Mumble(config.SERVER_IP, config.BOT_USERNAME, password=config.PASSWORD, port=config.SERVER_PORT)
+        self.mumble = pymumble.Mumble(
+            config.SERVER_IP,
+            config.BOT_USERNAME,
+            password=config.PASSWORD,
+            port=config.SERVER_PORT
+        )
 
         # Callbacks
         self.mumble.callbacks.set_callback("user_updated", self.on_user_updated)
-        # Delegate text handling to our new handler
         self.mumble.callbacks.set_callback("text_received", self.text_handler.handle)
+
         self.mumble.set_receive_sound(True)
         self.mumble.callbacks.set_callback("sound_received", self.on_sound_received)
 
     def run(self):
+        """Main application loop."""
         print("🚀 Starting Bot...")
         threading.Thread(target=self._start_async_loop, daemon=True).start()
 
+        # Connection / Reconnection Loop
         while True:
             try:
                 self.setup_mumble()
@@ -86,10 +99,12 @@ class MadnessBot:
                 self.mumble.is_ready()
 
                 channel = self.mumble.channels.find_by_name(config.TARGET_CHANNEL)
-                if channel: channel.move_in()
+                if channel:
+                    channel.move_in()
 
                 print("✅ Connected!")
 
+                # Keep main thread alive while monitoring connection
                 while self.mumble.is_alive():
                     if self.mumble.users.myself:
                         self.my_channel_id = self.mumble.users.myself['channel_id']
@@ -110,8 +125,8 @@ class MadnessBot:
             print(f"🔄 Reconnecting in {config.RECONNECT_DELAY} seconds...")
             time.sleep(config.RECONNECT_DELAY)
 
-            with self.audio_lock:
-                self.user_streams = {}
+            # Clear audio buffers on reconnect to prevent stale processing
+            self.audio_manager.user_streams.clear()
 
     def shutdown(self):
         print("\nShutting down...")
@@ -129,70 +144,78 @@ class MadnessBot:
     # --- WORKERS ---
 
     async def tts_worker(self):
+        """Consumes text from queue and generates speech."""
         while True:
             text = await self.queue.get()
             if self.mumble and self.mumble.sound_output:
-                pcm_data = await self.loop.run_in_executor(self.executor, self.voice.generate_pcm, text)
+                # Generate PCM in thread pool to avoid blocking async loop
+                pcm_data = await self.loop.run_in_executor(
+                    self.executor,
+                    self.voice.generate_pcm,
+                    text
+                )
                 if pcm_data:
                     try: self.mumble.sound_output.add_sound(pcm_data)
                     except: pass
             self.queue.task_done()
 
     async def audio_processing_worker(self):
+        """Polls AudioManager for complete voice clips to process."""
         while True:
             await asyncio.sleep(config.POLL_RATE)
             if not self.listening_enabled: continue
 
-            now = time.time()
-            with self.audio_lock:
-                active_users = list(self.user_streams.keys())
+            # Get user audio streams that have finished recording (silence detected)
+            for user, raw_audio, stream in self.audio_manager.get_processable_audio():
 
-            for name in active_users:
-                if name in config.IGNORED_USERS: continue
+                # Double check ignore list
+                if user in config.IGNORED_USERS:
+                    stream.is_processing = False
+                    continue
 
-                stream = self.user_streams[name]
-                with stream.lock:
-                    is_silence = (now - stream.last_packet_time) > config.SILENCE_THRESHOLD
-                    has_data = len(stream.buffer) > 0
-
-                if is_silence and has_data and not stream.is_processing:
-                    raw_audio = stream.extract_audio()
-                    if len(raw_audio) >= (48000 * 2 * config.MIN_AUDIO_LENGTH):
-                        stream.is_processing = True
-                        self.loop.run_in_executor(self.executor, self.process_voice_command, name, raw_audio, stream)
+                # Offload transcription and logic to thread pool
+                self.loop.run_in_executor(
+                    self.executor,
+                    self.process_voice_command,
+                    user, raw_audio, stream
+                )
 
     def process_voice_command(self, user, raw_audio, stream):
+        """Transcribes audio and routes to VoiceHandler."""
         try:
             text = self.ear.transcribe(raw_audio)
             if text:
                 print(f"[{user}]: {text}")
-                # Delegate voice logic to handler
                 self.voice_handler.handle(user, text)
+        except Exception as e:
+            print(f"Error processing voice command: {e}")
         finally:
+            # Important: Unlock the stream for new input
             stream.is_processing = False
 
-    # --- CALLBACKS & HELPERS ---
+    # --- PUBLIC HELPERS (Used by Handlers) ---
 
     def say_async(self, text):
-        """Helper to queue TTS from anywhere."""
+        """Queues a message to be spoken by TTS."""
         self.loop.call_soon_threadsafe(self.queue.put_nowait, text)
 
     def send_chat(self, text):
-        """Helper to send Mumble chat messages."""
+        """Sends a text message to the current Mumble channel."""
         if self.mumble and self.my_channel_id is not None:
             try: self.mumble.channels[self.my_channel_id].send_text_message(text)
             except: pass
 
+    # --- CALLBACKS ---
+
     def on_sound_received(self, user, sound_chunk):
+        """Mumble callback for incoming audio packets."""
         if not self.listening_enabled or not user: return
         if user['name'] in config.IGNORED_USERS: return
 
-        with self.audio_lock:
-            if user['name'] not in self.user_streams:
-                self.user_streams[user['name']] = UserVoiceStream(user['name'])
-            self.user_streams[user['name']].add_data(sound_chunk.pcm)
+        self.audio_manager.add_audio(user['name'], sound_chunk.pcm)
 
     def on_user_updated(self, user, mods):
+        """Mumble callback for user state changes (join/move)."""
         if "channel_id" not in mods: return
         name = user['name']
 
@@ -202,5 +225,10 @@ class MadnessBot:
         if new_ch == self.my_channel_id:
              self.say_async(f"Welcome {name}")
 
-    def load_stats(self): pass
-    def save_stats(self): pass
+    def load_stats(self):
+        # Placeholder for persistence logic
+        pass
+
+    def save_stats(self):
+        # Placeholder for persistence logic
+        pass
