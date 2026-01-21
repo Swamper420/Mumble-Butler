@@ -139,85 +139,92 @@ class MadnessBot:
             stream.is_processing = False
 
     def handle_logic(self, user, text):
-        clean = re.sub(r'[^\w\s]', '', text).lower().strip()
-        keyword_regex = r"^" + re.escape(config.ACTIVATION_KEYWORD) + r"\b"
+            clean = re.sub(r'[^\w\s]', '', text).lower().strip()
 
-        if not re.search(keyword_regex, clean): return
-        content = re.sub(keyword_regex, "", clean).strip()
+            # --- KEYWORD MATCHING LOGIC ---
+            # 1. Sort keywords by length (descending) so "Mr President" matches before "Mr"
+            # Note: Ensure ACTIVATION_KEYWORDS is a list in config.py
+            sorted_keywords = sorted(config.ACTIVATION_KEYWORDS, key=len, reverse=True)
 
-        if self.chime_pcm:
-            self.mumble.sound_output.add_sound(self.chime_pcm)
+            # 2. Build pattern: ^(obama|barack|computer)\b
+            pattern = r"^(" + "|".join(re.escape(k.lower()) for k in sorted_keywords) + r")\b"
 
-        cmd_out = None
+            # 3. Check for match
+            if not re.search(pattern, clean):
+                return
 
-        # --- Voice Command Processing using Config ---
+            # 4. Remove the trigger word from the command
+            content = re.sub(pattern, "", clean, count=1).strip()
 
-        # 1. Forget
-        if any(w in content for w in config.VOICE_TRIGGERS['FORGET']):
-            self.brain.reset_memory()
-            self.say_async("Memory wiped.")
-            return
+            if self.chime_pcm:
+                self.mumble.sound_output.add_sound(self.chime_pcm)
 
-        # 2. Volume
-        if any(w in content for w in config.VOICE_TRIGGERS['VOLUME']) and (m := re.search(r"(\d+)", content)):
-            cmd_out = f"{config.MUMBLE_COMMANDS['VOLUME']} {m.group(1)}"
+            cmd_out = None
 
-        # 3. Recommend (Moved up priority)
-        elif any(w in content for w in config.VOICE_TRIGGERS['RECOMMEND']):
-            triggers = config.VOICE_TRIGGERS['RECOMMEND']
-            desc = content
-            for t in triggers:
-                desc = desc.replace(t, "")
+            # --- Voice Command Processing using Config ---
 
-            desc = desc.strip() or "random music"
-            song = self.brain.recommend_song(desc)
-            if song:
-                cmd_out = f"{config.MUMBLE_COMMANDS['PLAY_YOUTUBE']} {song}"
-                self.say_async(f"Queued {song}")
+            # 1. Forget
+            if any(w in content for w in config.VOICE_TRIGGERS['FORGET']):
+                self.brain.reset_memory()
+                self.say_async("Memory wiped.")
+                return
 
-        # 4. Play / Queue
-        elif any(w in content for w in config.VOICE_TRIGGERS['PLAY_MUSIC']):
-             # If "music" is triggered explicitly -> !play
-             cmd_out = config.MUMBLE_COMMANDS['PLAY_GENERIC']
+            # 2. Volume
+            if any(w in content for w in config.VOICE_TRIGGERS['VOLUME']) and (m := re.search(r"(\d+)", content)):
+                cmd_out = f"{config.MUMBLE_COMMANDS['VOLUME']} {m.group(1)}"
 
-        elif any(w in content for w in config.VOICE_TRIGGERS['PLAY_SPECIFIC']):
-            # Check for generic "play [song]" or "queue [song]"
-            triggers = "|".join(config.VOICE_TRIGGERS['PLAY_SPECIFIC'])
-            q = re.search(rf"(?:{triggers})\s+(.*)", content)
-            if q:
-                cmd_out = f"{config.MUMBLE_COMMANDS['PLAY_YOUTUBE']} {q.group(1)}"
+            # 3. Recommend
+            elif any(w in content for w in config.VOICE_TRIGGERS['RECOMMEND']):
+                triggers = config.VOICE_TRIGGERS['RECOMMEND']
+                desc = content
+                for t in triggers:
+                    desc = desc.replace(t, "")
 
-        # 5. Stop / Pause
-        elif any(w in content for w in config.VOICE_TRIGGERS['STOP']):
-            cmd_out = config.MUMBLE_COMMANDS['PAUSE']
+                desc = desc.strip() or "random music"
+                song = self.brain.recommend_song(desc)
+                if song:
+                    cmd_out = f"{config.MUMBLE_COMMANDS['PLAY_YOUTUBE']} {song}"
+                    self.say_async(f"Queued {song}")
 
-        # 6. Skip / Next
-        elif any(w in content for w in config.VOICE_TRIGGERS['SKIP']):
-            cmd_out = config.MUMBLE_COMMANDS['SKIP']
+            # 4. Play / Queue
+            elif any(w in content for w in config.VOICE_TRIGGERS['PLAY_MUSIC']):
+                # If "music" is triggered explicitly -> !play
+                cmd_out = config.MUMBLE_COMMANDS['PLAY_GENERIC']
 
-        # 7. File (New)
-        elif any(w in content for w in config.VOICE_TRIGGERS['PLAY_FILE']):
-            # Matches: "file <path>", "f <path>", "file <keyword>"
-            triggers = "|".join(config.VOICE_TRIGGERS['PLAY_FILE'])
-            q = re.search(rf"(?:{triggers})\s+(.*)", content)
-            if q:
-                # Sends: !file <arg>
-                cmd_out = f"{config.MUMBLE_COMMANDS['FILE']} {q.group(1)}"
+            elif any(w in content for w in config.VOICE_TRIGGERS['PLAY_SPECIFIC']):
+                # Check for generic "play [song]" or "queue [song]"
+                triggers = "|".join(config.VOICE_TRIGGERS['PLAY_SPECIFIC'])
+                q = re.search(rf"(?:{triggers})\s+(.*)", content)
+                if q:
+                    cmd_out = f"{config.MUMBLE_COMMANDS['PLAY_YOUTUBE']} {q.group(1)}"
 
-        # 8. Repeat (New)
-        elif any(w in content for w in config.VOICE_TRIGGERS['REPEAT']):
-            # Matches: "repeat", "repeat 5", "loop 3"
-            m = re.search(r"(\d+)", content)
-            # Default to 1 if no number is spoken
-            count = m.group(1) if m else "1"
-            cmd_out = f"{config.MUMBLE_COMMANDS['REPEAT']} {count}"
+            # 5. Stop / Pause
+            elif any(w in content for w in config.VOICE_TRIGGERS['STOP']):
+                cmd_out = config.MUMBLE_COMMANDS['PAUSE']
 
-        # Execution
-        if cmd_out:
-            self.send_chat(cmd_out)
-        else:
-            response = self.brain.generate_response(f"User {user} says: {content}")
-            self.say_async(response)
+            # 6. Skip / Next
+            elif any(w in content for w in config.VOICE_TRIGGERS['SKIP']):
+                cmd_out = config.MUMBLE_COMMANDS['SKIP']
+
+            # 7. File
+            elif any(w in content for w in config.VOICE_TRIGGERS['PLAY_FILE']):
+                triggers = "|".join(config.VOICE_TRIGGERS['PLAY_FILE'])
+                q = re.search(rf"(?:{triggers})\s+(.*)", content)
+                if q:
+                    cmd_out = f"{config.MUMBLE_COMMANDS['FILE']} {q.group(1)}"
+
+            # 8. Repeat
+            elif any(w in content for w in config.VOICE_TRIGGERS['REPEAT']):
+                m = re.search(r"(\d+)", content)
+                count = m.group(1) if m else "1"
+                cmd_out = f"{config.MUMBLE_COMMANDS['REPEAT']} {count}"
+
+            # Execution
+            if cmd_out:
+                self.send_chat(cmd_out)
+            else:
+                response = self.brain.generate_response(f"User {user} says: {content}")
+                self.say_async(response)
 
     # --- CALLBACKS & HELPERS ---
 
