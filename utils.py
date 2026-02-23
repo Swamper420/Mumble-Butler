@@ -39,3 +39,16 @@ def resample_audio(audio_data: np.ndarray, input_rate: int, target_rate: int) ->
 def float_to_pcm(audio_float: np.ndarray) -> bytes:
     """Converts float32 audio back to int16 bytes."""
     return (audio_float * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
+
+
+def adjust_volume_pcm(raw_bytes: bytes, factor: float) -> bytes:
+    """Apply a simple volume multiplier to 16‑bit PCM data.
+
+    Works in-place by converting to numpy, scaling, clipping and returning
+    the modified bytes.  Factor should be between 0.0 (silence) and
+    ~2.0 (double volume).
+    """
+    audio = np.frombuffer(raw_bytes, dtype=np.int16).astype(np.float32)
+    audio *= factor
+    audio = np.clip(audio, -32768, 32767).astype(np.int16)
+    return audio.tobytes()

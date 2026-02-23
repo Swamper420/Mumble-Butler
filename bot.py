@@ -34,6 +34,9 @@ class MadnessBot:
         self.ear = Ear()
         self.voice = Voice()
         self.audio_manager = AudioManager()
+        # music playback engine replaces external botamusique
+        from modules.music_player import MusicPlayer
+        self.music = MusicPlayer(self)
 
         # Logic Handlers
         self.text_handler = TextHandler(self)
@@ -199,11 +202,39 @@ class MadnessBot:
         """Queues a message to be spoken by TTS."""
         self.loop.call_soon_threadsafe(self.queue.put_nowait, text)
 
+    # legacy compatibility helpers ------------------------------------------------
     def send_chat(self, text):
         """Sends a text message to the current Mumble channel."""
         if self.mumble and self.my_channel_id is not None:
             try: self.mumble.channels[self.my_channel_id].send_text_message(text)
             except: pass
+
+    # The following are thin wrappers that voice/text handlers can call
+    # when they previously produced botamusique chat commands.  They simply
+    # forward to the internal music player.
+    def play(self, query: str):
+        return self.music.queue_track(query)
+
+    def skip(self):
+        return self.music.skip()
+
+    def stop_music(self):
+        return self.music.stop()
+
+    def set_volume(self, level: int):
+        return self.music.set_volume(level)
+
+    def pause_music(self):
+        return self.music.pause()
+
+    def resume_music(self):
+        return self.music.resume()
+
+    def repeat_music(self, count: int):
+        return self.music.repeat(count)
+
+    def set_mode(self, mode: str):
+        return self.music.set_mode(mode)
 
     # --- CALLBACKS ---
 

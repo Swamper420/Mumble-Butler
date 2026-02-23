@@ -29,12 +29,10 @@ class VoiceHandler:
             self.bot.mumble.sound_output.add_sound(self.bot.chime_pcm)
 
         # 2. Process Logic
-        cmd_out = self._match_command(content)
+        handled = self._match_command(content)
 
-        if cmd_out:
-            self.bot.send_chat(cmd_out)
-        else:
-            # If no command matched, talk to the LLM
+        if not handled:
+            # If no command matched, let the LLM answer
             response = self.bot.brain.generate_response(f"User {user} says: {content}")
             self.bot.say_async(response)
 
@@ -47,65 +45,82 @@ class VoiceHandler:
         if any(w in content for w in config.VOICE_TRIGGERS['FORGET']):
             self.bot.brain.reset_memory()
             self.bot.say_async("Memory wiped.")
-            return None # Action handled locally, no chat command needed
+            return True
 
         # 2. Volume
         if any(w in content for w in config.VOICE_TRIGGERS['VOLUME']):
             m = re.search(r"(\d+)", content)
             if m:
-                return f"{config.MUMBLE_COMMANDS['VOLUME']} {m.group(1)}"
+                self.bot.set_volume(int(m.group(1)))
+            return True
 
         # 3. Mode
-        elif any(w in content for w in config.VOICE_TRIGGERS['MODE']):
+        if any(w in content for w in config.VOICE_TRIGGERS['MODE']):
             modes = ["one-shot", "one shot", "oneshot", "autoplay", "repeat", "random"]
             for m in modes:
                 if m in content:
                     target = "one-shot" if m in ["oneshot", "one shot"] else m
-                    self.bot.say_async(f"Setting mode to {target}")
-                    return f"{config.MUMBLE_COMMANDS['MODE']} {target}"
+                    self.bot.set_mode(target)
+                    return True
             self.bot.say_async("Available modes are: one-shot, autoplay, repeat, and random.")
-            return None
+            return True
 
         # 4. Recommend
-        elif any(w in content for w in config.VOICE_TRIGGERS['RECOMMEND']):
+        if any(w in content for w in config.VOICE_TRIGGERS['RECOMMEND']):
             desc = content
             for t in config.VOICE_TRIGGERS['RECOMMEND']:
                 desc = desc.replace(t, "")
             song = self.bot.brain.recommend_song(desc.strip() or "random music")
             if song:
                 self.bot.say_async(f"Queued {song}")
-                return f"{config.MUMBLE_COMMANDS['PLAY_YOUTUBE']} {song}"
+                self.bot.play(song)
+            return True
 
         # 5. Play / Queue (Specific)
-        elif any(w in content for w in config.VOICE_TRIGGERS['PLAY_SPECIFIC']):
+        if any(w in content for w in config.VOICE_TRIGGERS['PLAY_SPECIFIC']):
             triggers = "|".join(config.VOICE_TRIGGERS['PLAY_SPECIFIC'])
             q = re.search(rf"(?:{triggers})\s+(.*)", content)
             if q:
-                return f"{config.MUMBLE_COMMANDS['PLAY_YOUTUBE']} {q.group(1)}"
+                self.bot.play(q.group(1))
+            return True
 
-        # 6. Play (Generic Music)
-        elif any(w in content for w in config.VOICE_TRIGGERS['PLAY_MUSIC']):
-            return config.MUMBLE_COMMANDS['PLAY_GENERIC']
+        # 6. Play (Generic Music / "music")
+        if any(w in content for w in config.VOICE_TRIGGERS['PLAY_MUSIC']):
+            # fall back to a recommendation if no query provided
+            rec = self.bot.brain.recommend_song("random music")
+            if rec:
+                self.bot.say_async(f"Queued {rec}")
+                self.bot.play(rec)
+            return True
 
-        # 7. Stop / Pause
-        elif any(w in content for w in config.VOICE_TRIGGERS['STOP']):
-            return config.MUMBLE_COMMANDS['PAUSE']
+        # 7. Resume (if paused)
+        if any(w in content for w in config.VOICE_TRIGGERS.get('RESUME', [])):
+            self.bot.resume_music()
+            return True
 
-        # 8. Skip / Next
-        elif any(w in content for w in config.VOICE_TRIGGERS['SKIP']):
-            return config.MUMBLE_COMMANDS['SKIP']
+        # 8. Stop (full halt)
+        if any(w in content for w in config.VOICE_TRIGGERS['STOP']):
+            self.bot.stop_music()
+            return True
+
+        # 9. Skip / Next
+        if any(w in content for w in config.VOICE_TRIGGERS['SKIP']):
+            self.bot.skip()
+            return True
 
         # 9. File
-        elif any(w in content for w in config.VOICE_TRIGGERS['PLAY_FILE']):
+        if any(w in content for w in config.VOICE_TRIGGERS['PLAY_FILE']):
             triggers = "|".join(config.VOICE_TRIGGERS['PLAY_FILE'])
             q = re.search(rf"(?:{triggers})\s+(.*)", content)
             if q:
-                return f"{config.MUMBLE_COMMANDS['FILE']} {q.group(1)}"
+                self.bot.play(q.group(1))
+            return True
 
         # 10. Repeat
-        elif any(w in content for w in config.VOICE_TRIGGERS['REPEAT']):
+        if any(w in content for w in config.VOICE_TRIGGERS['REPEAT']):
             m = re.search(r"(\d+)", content)
-            count = m.group(1) if m else "1"
-            return f"{config.MUMBLE_COMMANDS['REPEAT']} {count}"
+            count = int(m.group(1)) if m else 1
+            self.bot.repeat_music(count)
+            return True
 
-        return None
+        return False

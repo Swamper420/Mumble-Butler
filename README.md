@@ -1,81 +1,132 @@
-# Mumble Butler (Obama)
+# Mumble Butler
 
-A sophisticated, AI-powered Mumble bot designed to act as a digital butler for your server. It features real-time voice recognition, text-to-speech responses, LLM-driven conversation, and music/audio playback controls.
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Python](https://img.shields.io/badge/python-3.10%2B-blue)]() [![Mumble](https://img.shields.io/badge/mumble-1.4%2B-orange)]()
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
-![Mumble](https://img.shields.io/badge/mumble-1.4%2B-orange)
+A modern, extensible AI assistant for Mumble servers. **Mumble Butler** listens to voice commands, understands natural language using a local LLM, replies with synthesized speech, and **plays music natively** (no external bots required). It now replaces the old Botamusique integration entirely. Designed for privacy, performance, and ease of customization.
 
-## 🌟 Features
+---
 
-* **🗣️ Voice-to-Text (STT):** Listens to users in a Mumble channel using `faster-whisper`.
-* **🧠 AI Personality:** Powered by a local LLM (e.g., `qwen2.5-3b-instruct`) via `llama-cpp-python`.
-* **🔊 Text-to-Speech (TTS):** Generates high-quality voice responses using `Kokoro-82M`.
-* **🤖 Bot-to-Bot Control:** Acts as a voice interface for **[botamusique](https://github.com/azlux/botamusique)**. Speak commands to "Obama," and he translates them into text commands (`!play`, `!volume`) for the music bot.
-* **🎤 Smart Recommendations:** Ask the bot to recommend music based on a vibe; it searches and queues the song automatically.
-* **🔧 Extensive Configuration:** Easy-to-edit `config.py` for tweaking triggers, models, and paths.
+## 🧩 Core Capabilities
 
-## 🛠️ Prerequisites
+- **Speech‑to‑Text (STT)** – Real-time transcription using `faster-whisper`.
+- **Conversational Intelligence** – Local GGUF models driven by `llama-cpp-python`.
+- **Text‑to‑Speech (TTS)** – Natural replies via `Kokoro-82M`.
+- **Built‑in Music Player** – Search/queue tracks from YouTube or local files, manage volume/queue/modes and hear audio directly from the bot.
+- **Context‑Aware Recommendations** – Ask for a mood or genre and the bot queues matching tracks automatically.
+- **Highly Configurable** – Behavior is controlled through `config.py`; no code changes required.
 
-* **Python 3.10+**
-* **Mumble Server (Murmur)**
-* **[Botamusique](https://github.com/azlux/botamusique):** **REQUIRED.** You must have `botamusique` running in the same channel. This bot handles the actual music playback, while "Obama" acts as the voice interface for it.
-* **NVIDIA GPU (Recommended):** For `cuda` acceleration of Whisper and TTS models.
-* **FFmpeg:** Installed and added to your system PATH.
+---
 
-## 📦 Installation
+## 🚀 Quick Start
 
-1.  **Clone the Repository**
-    ```bash
-    git clone [https://github.com/yourusername/mumble-butler.git](https://github.com/yourusername/mumble-butler.git)
-    cd mumble-butler
-    ```
+### Prerequisites
 
-2.  **Install Dependencies**
-    It is recommended to use a virtual environment.
-    ```bash
-    pip install -r requirements.txt
-    ```
-    *(Note: You may need to install `llama-cpp-python` with specific hardware acceleration flags depending on your GPU. Refer to their [documentation](https://github.com/abetlen/llama-cpp-python).)*
+1. Python **3.10+**
+2. Mumble server (Murmur) **1.4+**
+3. FFmpeg installed and on `PATH` (used for decoding external audio sources)
+4. `yt-dlp` available in the environment (used for YouTube searches and URLs)
+5. (Optional) NVIDIA GPU & CUDA for accelerated inference
 
-3.  **Download Models**
-    * **LLM:** Download a GGUF model (e.g., `qwen2.5-3b-instruct-q4_k_m.gguf`) and place it in a `models/` directory.
-    * **Kokoro:** The `Kokoro` pipeline will download required weights automatically on first run.
+### Installation
 
-4.  **Configure FFmpeg**
-    Ensure `ffmpeg` is accessible in your terminal.
-    ```bash
-    ffmpeg -version
-    ```
+```bash
+git clone https://github.com/Swamper420/Mumble-Butler.git
+cd Mumble-Butler
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
-## ⚙️ Configuration
+> 🗂️ Place your GGUF model (e.g. `qwen2.5-3b-instruct-q4_k_m.gguf`) under `models/`. Kokoro weights download automatically on first execution.
 
-Edit `config.py` to match your environment.
+### Configuration
 
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `SERVER_IP` | IP address of your Mumble server. | `"127.0.0.1"` |
-| `SERVER_PORT` | Port of your Mumble server. | `64738` |
-| `BOT_USERNAME` | The name the bot uses in Mumble. | `"Obama"` |
-| `PASSWORD` | Server password (if applicable). | `"password"` |
-| `TARGET_CHANNEL` | The channel the bot will join. | `"General"` |
-| `ACTIVATION_KEYWORD` | Spoken word required to trigger the bot. | `"obama"` |
-| `LLM_MODEL_PATH` | Path to your local GGUF model file. | `"models/..."` |
+Open `config.py` and adjust values to match your environment. Example:
 
-## 🚀 Usage
+```python
+SERVER_IP = "127.0.0.1"
+SERVER_PORT = 64738
+BOT_USERNAME = "Obama"
+PASSWORD = "password"
+TARGET_CHANNEL = "General"
+ACTIVATION_KEYWORD = "obama"
+LLM_MODEL_PATH = "models/qwen2.5-3b-instruct-q4_k_m.gguf"
+```
 
-1.  **Start Botamusique:** Ensure your music bot is running and connected to the target channel.
-2.  **Start Mumble Butler:**
-    ```bash
-    python main.py
-    ```
-3.  **Verify Connection:** Speak a command (e.g., *"Obama, play lo-fi hip hop"*). "Obama" should respond verbally and immediately send a `!yplay` text command to the channel, which `botamusique` will pick up.
+Additional options control logging, device selection, and model parameters.
 
-## 🧩 How It Works
+### Running
+
+1. Launch the assistant:
+   ```bash
+   python main.py
+   ```
+2. Speak a command, e.g. **“Obama, play lo-fi hip hop”**. The bot will respond vocally and stream the audio itself.
+
+Below are some of the supported voice/chat commands:
+
+- "play <query>" / "queue <query>" – add a song/search term to the queue
+- "skip" / "next" – skip current track
+- "stop" / "pause" / "resume" – control playback
+- "volume <0‑100>" – set volume percentage
+- "repeat 2" – repeat current track twice
+- "mode autoplay|repeat|random|one-shot" – change queue behaviour
+- Text equivalents are available with `?play`, `?skip`, `?volume`, etc.
+
+---
+
+## ⚙️ Configuration Reference
+
+| Setting            | Description                             | Default                 |
+|--------------------|-----------------------------------------|-------------------------|
+| `SERVER_IP`        | Mumble server address                   | `"127.0.0.1"`         |
+| `SERVER_PORT`      | Mumble server port                      | `64738`                |
+| `BOT_USERNAME`     | Username used by the bot                | `"Obama"`             |
+| `PASSWORD`         | Server password (if any)                | `"password"`          |
+| `TARGET_CHANNEL`   | Channel to join                         | `"General"`           |
+| `ACTIVATION_KEYWORD` | Word that activates the bot            | `"obama"`             |
+| `LLM_MODEL_PATH`   | Path to local GGUF model                | `"models/..."`        |
+
+---
+
+## 📐 Architecture Overview
 
 ```mermaid
 graph LR
-    User(User via Voice) -->|Spoken Command| Butler(Mumble Butler)
-    Butler -->|TTS Response| User
-    Butler -->|Text Command !play| MusicBot(Botamusique)
-    MusicBot -->|Audio Stream| MumbleServer
+    User[User (Voice)] -->|Audio| Butler[Mumble Butler]
+    Butler -->|STT / NLU| LLM
+    Butler -->|TTS| User
+    Butler -->|Internal Player| MumbleServer
+```
+
+---
+
+## 📁 Project Layout
+
+```
+.
+├── bot.py
+├── config.py
+├── main.py
+├── utils.py
+├── handlers/
+├── models/
+└── modules/
+```
+
+---
+
+## 🤝 Contributing
+
+Contributions, enhancements, and bug reports are very welcome. Please open an issue or submit a pull request.
+
+## 📬 Support
+
+For questions or assistance, use GitHub Discussions or open an issue in the repository.
+
+---
+
+## 🛡️ License
+
+This project is licensed under the [MIT License](LICENSE).
+

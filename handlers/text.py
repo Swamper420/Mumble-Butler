@@ -55,3 +55,36 @@ class TextHandler:
         elif cmd == config.TEXT_TRIGGERS['SAY']:
             if arg:
                 self.bot.say_async(arg)
+
+        # --- music commands (previously handled by botamusique) ---
+        elif cmd == "?play":
+            if arg:
+                self.bot.play(arg)
+        elif cmd == "?now":
+            now = self.bot.music.now_playing() or "nothing"
+            self.bot.send_chat(f"Now playing: {now}")
+        elif cmd == "?queue":
+            q = self.bot.music.queue_list()
+            self.bot.send_chat("Queue: " + (", ".join(q) if q else "empty"))
+        elif cmd == "?skip":
+            self.bot.skip()
+        elif cmd == "?stop":
+            self.bot.stop_music()
+        elif cmd == "?pause":
+            self.bot.pause_music()
+        elif cmd == "?resume":
+            self.bot.resume_music()
+        elif cmd == "?volume":
+            try:
+                level = int(arg)
+                self.bot.set_volume(level)
+            except ValueError:
+                self.bot.send_chat("Usage: ?volume <0-100>")
+        elif cmd == "?repeat":
+            try:
+                count = int(arg)
+                self.bot.repeat_music(count)
+            except ValueError:
+                self.bot.send_chat("Usage: ?repeat <times>")
+        elif cmd == "?mode":
+            self.bot.set_mode(arg.lower())

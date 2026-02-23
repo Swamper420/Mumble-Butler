@@ -50,16 +50,19 @@ VOICE_TRIGGERS = {
     'PLAY_MUSIC': ["music"],            # Triggers generic play
     'PLAY_SPECIFIC': ["play", "queue"], # Triggers search/youtube play
     'RECOMMEND': ["recommend"],
-    'STOP': ["stop", "silence"],
+    'STOP': ["stop", "silence", "pause"],  # stops playback completely
     'SKIP': ["skip", "next"],
     'PLAY_FILE': ["file", "f"],         # New: Local file playback
     'REPEAT': ["repeat"],                # New: Repeat song
-    'MODE':["mode"]
+    'MODE':["mode"],
+    'RESUME': ["resume", "continue"]  # words that should resume playback
 
 }
 
-# --- OUTPUT COMMANDS ---
-# The actual text commands sent to the Mumble server
+# --- OUTPUT COMMANDS (legacy) ---
+# These were used when commands were forwarded to an external
+# botamusique instance.  They are kept here for reference but
+# are no longer required by the internal player.
 MUMBLE_COMMANDS = {
     'VOLUME': "!volume",
     'PLAY_GENERIC': "!play",
@@ -69,7 +72,6 @@ MUMBLE_COMMANDS = {
     'FILE': "!file",    # Maps to !file or !f
     'REPEAT': "!repeat",
     'MODE': "!mode"
-
 }
 
 # --- TEXT CHAT TRIGGERS ---
@@ -80,9 +82,18 @@ TEXT_TRIGGERS = {
     'FORGET': "?forget",
     'VOICE': "?voice",
     'SAY': "?say",
-    'MEMORY': "?memory"
-
-    
+    'MEMORY': "?memory",
+    # music-related helpers are handled separately but included here for help text
+    'PLAY': "?play",
+    'NOW': "?now",
+    'QUEUE': "?queue",
+    'SKIP': "?skip",
+    'STOP': "?stop",
+    'PAUSE': "?pause",
+    'RESUME': "?resume",
+    'VOLUME': "?volume",
+    'REPEAT': "?repeat",
+    'MODE': "?mode",
 }
 
 # --- AUDIO PARAMETERS ---
