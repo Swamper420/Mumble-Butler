@@ -1,6 +1,7 @@
 import os
 import subprocess
 import time
+from datetime import datetime, timedelta
 import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -34,9 +35,6 @@ class MadnessBot:
         self.ear = Ear()
         self.voice = Voice()
         self.audio_manager = AudioManager()
-        # music playback engine replaces external botamusique
-        from modules.music_player import MusicPlayer
-        self.music = MusicPlayer(self)
 
         # Logic Handlers
         self.text_handler = TextHandler(self)
@@ -50,7 +48,11 @@ class MadnessBot:
         # Concurrency
         self.loop = asyncio.new_event_loop()
         self.queue = asyncio.Queue()
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        self.executor = ThreadPoolExecutor(max_workers=40)
+
+        self.recent_transcripts = []
+        self.transcript_lock = threading.Lock()
+        self.background_tasks = set()
 
     def _load_chime(self):
         """Loads the chime sound effect into memory."""
@@ -141,7 +143,8 @@ class MadnessBot:
         asyncio.set_event_loop(self.loop)
         self.loop.run_until_complete(asyncio.gather(
             self.tts_worker(),
-            self.audio_processing_worker()
+            self.audio_processing_worker(),
+            self.hourly_report_worker()
         ))
 
     # --- WORKERS ---
@@ -183,58 +186,101 @@ class MadnessBot:
                     user, raw_audio, stream
                 )
 
+    # NEW: Hourly Report Worker
+    async def hourly_report_worker(self):
+        """Announces status every hour."""
+        print("🕒 Hourly reporter started.")
+
+        # Wait until the next top-of-the-hour
+        now = datetime.now()
+        next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+        seconds_until_hour = (next_hour - now).total_seconds()
+
+        await asyncio.sleep(seconds_until_hour)
+
+        while True:
+            if self.mumble and self.mumble.users:
+                # 1. Gather Context
+                active_users = [u['name'] for u in self.mumble.users.values()
+                                if u['name'] not in config.IGNORED_USERS and u['name'] != config.BOT_USERNAME]
+
+                # 2. Get last minute of transcripts
+                one_minute_ago = time.time() - 60
+                relevant_transcripts = []
+                with self.transcript_lock:
+                    # Filter and cleanup old history
+                    self.recent_transcripts = [t for t in self.recent_transcripts if t['time'] > one_minute_ago]
+                    relevant_transcripts = self.recent_transcripts[:]
+
+                # 3. Generate and Speak
+                report = await self.loop.run_in_executor(
+                    self.executor,
+                    self.brain.generate_hourly_report,
+                    active_users,
+                    relevant_transcripts
+                )
+                if report:
+                    self.say_async(report)
+
+            # Wait for next hour
+            await asyncio.sleep(3600)
+
     def process_voice_command(self, user, raw_audio, stream):
         """Transcribes audio and routes to VoiceHandler."""
         try:
             text = self.ear.transcribe(raw_audio)
             if text:
                 print(f"[{user}]: {text}")
+                with self.transcript_lock:
+                    self.recent_transcripts.append({
+                        'time': time.time(),
+                        'user': user,
+                        'text': text
+                    })
                 self.voice_handler.handle(user, text)
         except Exception as e:
             print(f"Error processing voice command: {e}")
         finally:
-            # Important: Unlock the stream for new input
             stream.is_processing = False
 
     # --- PUBLIC HELPERS (Used by Handlers) ---
+
+# ... inside MadnessBot class ...
+
+# In bot.py
+
+    def schedule_reminder(self, seconds, message):
+        """Called from threads (VoiceHandler) to schedule an async task."""
+        def _schedule():
+            try:
+                # Initialize storage if missing (Self-healing)
+                if not hasattr(self, 'background_tasks'):
+                    self.background_tasks = set()
+
+                task = self.loop.create_task(self._async_reminder(seconds, message))
+                self.background_tasks.add(task)
+                task.add_done_callback(self.background_tasks.discard)
+                print(f"DEBUG: Timer task created for {seconds}s.")
+            except Exception as e:
+                print(f"CRITICAL ERROR in schedule_reminder: {e}")
+
+        self.loop.call_soon_threadsafe(_schedule)
+
+    async def _async_reminder(self, seconds, message):
+        print(f"⏳ Timer started: {seconds}s")
+        await asyncio.sleep(seconds)
+        print(f"⏰ Timer finished!")
+        self.say_async(f"Reminder: {message}")
 
     def say_async(self, text):
         """Queues a message to be spoken by TTS."""
         self.loop.call_soon_threadsafe(self.queue.put_nowait, text)
 
-    # legacy compatibility helpers ------------------------------------------------
     def send_chat(self, text):
         """Sends a text message to the current Mumble channel."""
         if self.mumble and self.my_channel_id is not None:
             try: self.mumble.channels[self.my_channel_id].send_text_message(text)
             except: pass
-
-    # The following are thin wrappers that voice/text handlers can call
-    # when they previously produced botamusique chat commands.  They simply
-    # forward to the internal music player.
-    def play(self, query: str):
-        return self.music.queue_track(query)
-
-    def skip(self):
-        return self.music.skip()
-
-    def stop_music(self):
-        return self.music.stop()
-
-    def set_volume(self, level: int):
-        return self.music.set_volume(level)
-
-    def pause_music(self):
-        return self.music.pause()
-
-    def resume_music(self):
-        return self.music.resume()
-
-    def repeat_music(self, count: int):
-        return self.music.repeat(count)
-
-    def set_mode(self, mode: str):
-        return self.music.set_mode(mode)
 
     # --- CALLBACKS ---
 
