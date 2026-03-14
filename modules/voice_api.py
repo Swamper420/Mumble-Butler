@@ -21,7 +21,7 @@ class _VoiceRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         ear = _ear
         if self.path == "/health":
-            self._send_json(200, {"status": "ok", "stt_loaded": bool(ear and ear.model is not None)})
+            self._send_json(200, {"status": "ok", "stt_loaded": ear is not None and ear.model is not None})
             return
         self._send_json(404, {"error": "Not found"})
 
@@ -66,7 +66,7 @@ class _VoiceRequestHandler(BaseHTTPRequestHandler):
         try:
             transcript = ear.transcribe(raw_pcm)
         except Exception as e:
-            print(f"Voice recognition failed: {e}")
+            print(f"Voice recognition failed on {self.path}: {e}")
             self._send_json(500, {"error": "Voice recognition failed"})
             return
 

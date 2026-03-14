@@ -56,6 +56,7 @@ class MadnessBot:
         self.transcript_lock = threading.Lock()
         self.background_tasks = set()
         self.api_servers = []
+        self.api_threads = []
 
     def _load_chime(self):
         """Loads the chime sound effect into memory."""
@@ -148,16 +149,20 @@ class MadnessBot:
         if config.START_LLM_API_WITH_BOT:
             try:
                 llm_server = create_llm_api_server(brain=self.brain)
-                threading.Thread(target=llm_server.serve_forever, daemon=True).start()
+                llm_thread = threading.Thread(target=llm_server.serve_forever, daemon=True)
+                llm_thread.start()
                 self.api_servers.append(llm_server)
+                self.api_threads.append(llm_thread)
             except Exception as e:
                 print(f"⚠️ Failed to start LLM API server: {e}")
 
         if config.START_VOICE_API_WITH_BOT:
             try:
                 voice_server = create_voice_api_server(ear=self.ear)
-                threading.Thread(target=voice_server.serve_forever, daemon=True).start()
+                voice_thread = threading.Thread(target=voice_server.serve_forever, daemon=True)
+                voice_thread.start()
                 self.api_servers.append(voice_server)
+                self.api_threads.append(voice_thread)
             except Exception as e:
                 print(f"⚠️ Failed to start Voice API server: {e}")
 
@@ -166,9 +171,12 @@ class MadnessBot:
             try:
                 server.shutdown()
                 server.server_close()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠️ API server shutdown error: {e}")
         self.api_servers.clear()
+        for thread in self.api_threads:
+            thread.join(timeout=config.API_THREAD_SHUTDOWN_TIMEOUT_SECONDS)
+        self.api_threads.clear()
 
     def _start_async_loop(self):
         asyncio.set_event_loop(self.loop)
