@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import config
 from modules.brain import Brain
 
-_brain = Brain()
+_brain = None
 
 
 class _LLMRequestHandler(BaseHTTPRequestHandler):
@@ -19,8 +19,9 @@ class _LLMRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        brain = _brain
         if self.path == "/health":
-            self._send_json(200, {"status": "ok", "llm_loaded": _brain.llm is not None})
+            self._send_json(200, {"status": "ok", "llm_loaded": bool(brain and brain.llm is not None)})
             return
         self._send_json(404, {"error": "Not found"})
 
@@ -56,16 +57,31 @@ class _LLMRequestHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "Field 'max_tokens' must be a positive integer"})
             return
 
-        response = _brain.generate_response(prompt.strip(), max_tokens=max_tokens)
+        brain = _brain
+        if brain is None or brain.llm is None:
+            self._send_json(503, {"error": "LLM is not loaded"})
+            return
+
+        try:
+            # Brain.generate_response uses an internal lock, so this call is safe under ThreadingHTTPServer.
+            response = brain.generate_response(prompt.strip(), max_tokens=max_tokens)
+        except Exception as e:
+            print(f"LLM processing failed: {e}")
+            self._send_json(500, {"error": "LLM processing failed"})
+            return
         self._send_json(200, {"response": response})
 
     def log_message(self, format, *args):
-        return
+        if getattr(config, "LLM_API_LOG_REQUESTS", False):
+            super().log_message(format, *args)
 
 
 def run_llm_api_server(host=None, port=None):
+    global _brain
     host = host or config.LLM_API_HOST
     port = port or config.LLM_API_PORT
+    print("🧠 Initializing LLM for API...")
+    _brain = Brain()
     server = ThreadingHTTPServer((host, port), _LLMRequestHandler)
     print(f"🌐 LLM API listening on http://{host}:{port}")
     server.serve_forever()

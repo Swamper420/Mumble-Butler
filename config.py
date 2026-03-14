@@ -35,7 +35,9 @@ ACTIVATION_KEYWORDS = ["obama", "opama", "opal", "opa"]
 MEMORY_ENABLED = False
 LLM_API_HOST = "127.0.0.1"
 LLM_API_PORT = 8080
+# Keep aligned with Brain.generate_response default for conversational replies.
 LLM_API_DEFAULT_MAX_TOKENS = 650
+LLM_API_LOG_REQUESTS = False
 
 
 SYSTEM_PROMPT = (
