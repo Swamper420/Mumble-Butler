@@ -73,6 +73,33 @@ Below are some of the supported voice/chat commands:
 - "mode autoplay|repeat|random|one-shot" – change queue behaviour
 - Text equivalents are available with `?play`, `?skip`, `?volume`, etc.
 
+### External LLM Query API
+
+You can also run a lightweight local HTTP API so another program can send prompts and get responses from the same LLM backend:
+
+```bash
+python main.py --api
+```
+
+Default API settings are in `config.py`:
+- `LLM_API_HOST` (default `127.0.0.1`)
+- `LLM_API_PORT` (default `8080`)
+- `LLM_API_DEFAULT_MAX_TOKENS` (default `650`)
+
+Example request:
+
+```bash
+curl -X POST http://127.0.0.1:8080/query \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Give me a short summary of Mumble Butler","max_tokens":120}'
+```
+
+Health check:
+
+```bash
+curl http://127.0.0.1:8080/health
+```
+
 ---
 
 ## ⚙️ Configuration Reference
@@ -129,4 +156,3 @@ For questions or assistance, use GitHub Discussions or open an issue in the repo
 ## 🛡️ License
 
 This project is licensed under the [MIT License](LICENSE).
-
