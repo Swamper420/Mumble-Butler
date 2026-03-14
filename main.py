@@ -7,7 +7,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--api",
         action="store_true",
-        help="Deprecated alias for default startup (bot + APIs)."
+        help="Deprecated. Has no effect; default startup already runs bot + APIs."
     )
     parser.add_argument(
         "--api-only",
@@ -36,7 +36,7 @@ if __name__ == "__main__":
             voice_server.server_close()
     else:
         if args.api:
-            print("ℹ️ '--api' is deprecated. Default startup already runs bot + APIs.")
+            print("INFO: '--api' is deprecated. Default startup already runs bot + APIs.")
         from bot import MadnessBot
         bot = MadnessBot()
         bot.run()
