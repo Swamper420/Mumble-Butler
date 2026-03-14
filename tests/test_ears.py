@@ -27,6 +27,7 @@ class EarTranscribeTests(unittest.TestCase):
         _, kwargs = fake_model.transcribe.call_args
         self.assertEqual(kwargs["language"], "fi")
         self.assertEqual(kwargs["beam_size"], 5)
+        self.assertEqual(kwargs["task"], "transcribe")
 
     @patch("modules.ears.resample_audio", return_value=[0.1])
     @patch("modules.ears.pcm_to_float", return_value=[0.1])
@@ -40,6 +41,7 @@ class EarTranscribeTests(unittest.TestCase):
 
         _, kwargs = fake_model.transcribe.call_args
         self.assertIsNone(kwargs["language"])
+        self.assertEqual(kwargs["task"], "transcribe")
 
     def test_transcribe_returns_empty_string_when_model_unavailable(self):
         with patch.object(ears, "STT_AVAILABLE", False):
