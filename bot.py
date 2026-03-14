@@ -17,6 +17,8 @@ from modules.brain import Brain
 from modules.ears import Ear
 from modules.voice import Voice
 from modules.audio_manager import AudioManager
+from modules.llm_api import create_llm_api_server
+from modules.voice_api import create_voice_api_server
 
 # Logic Handlers
 from handlers.text import TextHandler
@@ -53,6 +55,7 @@ class MadnessBot:
         self.recent_transcripts = []
         self.transcript_lock = threading.Lock()
         self.background_tasks = set()
+        self.api_servers = []
 
     def _load_chime(self):
         """Loads the chime sound effect into memory."""
@@ -95,6 +98,7 @@ class MadnessBot:
         """Main application loop."""
         print("🚀 Starting Bot...")
         threading.Thread(target=self._start_async_loop, daemon=True).start()
+        self._start_api_servers()
 
         # Connection / Reconnection Loop
         while True:
@@ -136,8 +140,35 @@ class MadnessBot:
     def shutdown(self):
         print("\nShutting down...")
         self.save_stats()
+        self._stop_api_servers()
         if self.mumble:
             self.mumble.stop()
+
+    def _start_api_servers(self):
+        if config.START_LLM_API_WITH_BOT:
+            try:
+                llm_server = create_llm_api_server(brain=self.brain)
+                threading.Thread(target=llm_server.serve_forever, daemon=True).start()
+                self.api_servers.append(llm_server)
+            except Exception as e:
+                print(f"⚠️ Failed to start LLM API server: {e}")
+
+        if config.START_VOICE_API_WITH_BOT:
+            try:
+                voice_server = create_voice_api_server(ear=self.ear)
+                threading.Thread(target=voice_server.serve_forever, daemon=True).start()
+                self.api_servers.append(voice_server)
+            except Exception as e:
+                print(f"⚠️ Failed to start Voice API server: {e}")
+
+    def _stop_api_servers(self):
+        for server in self.api_servers:
+            try:
+                server.shutdown()
+                server.server_close()
+            except Exception:
+                pass
+        self.api_servers.clear()
 
     def _start_async_loop(self):
         asyncio.set_event_loop(self.loop)
