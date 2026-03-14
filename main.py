@@ -7,11 +7,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--api",
         action="store_true",
-        help="Run HTTP APIs for direct LLM queries and voice transcription."
+        help="Deprecated. This flag has no effect; bot startup handles APIs via config flags (enabled by default)."
+    )
+    parser.add_argument(
+        "--api-only",
+        dest="api_only",
+        action="store_true",
+        help="Run only HTTP APIs (no Mumble bot connection)."
     )
     args = parser.parse_args()
 
-    if args.api:
+    if args.api_only:
         from modules.llm_api import create_llm_api_server
         from modules.voice_api import create_voice_api_server
 
@@ -29,6 +35,8 @@ if __name__ == "__main__":
             llm_server.server_close()
             voice_server.server_close()
     else:
+        if args.api:
+            print("INFO: '--api' is deprecated. Bot startup handles APIs via config flags.")
         from bot import MadnessBot
         bot = MadnessBot()
         bot.run()

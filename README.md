@@ -81,7 +81,7 @@ When the bot is running normally (`python main.py`), both APIs are available at 
 You can also run API-only mode (without connecting to Mumble):
 
 ```bash
-python main.py --api
+python main.py --api-only
 ```
 
 Default API settings are in `config.py`:
