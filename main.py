@@ -11,6 +11,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--api-only",
+        dest="api_only",
         action="store_true",
         help="Run only HTTP APIs (no Mumble bot connection)."
     )
