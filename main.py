@@ -7,7 +7,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--api",
         action="store_true",
-        help="Run the bot with HTTP APIs enabled (default behavior)."
+        help="Deprecated alias for default startup (bot + APIs)."
     )
     parser.add_argument(
         "--api-only",
@@ -35,10 +35,6 @@ if __name__ == "__main__":
             llm_server.server_close()
             voice_server.server_close()
     else:
-        if args.api:
-            import config
-            config.START_LLM_API_WITH_BOT = True
-            config.START_VOICE_API_WITH_BOT = True
         from bot import MadnessBot
         bot = MadnessBot()
         bot.run()
