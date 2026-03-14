@@ -7,7 +7,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--api",
         action="store_true",
-        help="Deprecated. Has no effect; bot startup handles APIs via config flags (enabled by default)."
+        help="Deprecated. This flag has no effect; bot startup handles APIs via config flags (enabled by default)."
     )
     parser.add_argument(
         "--api-only",
