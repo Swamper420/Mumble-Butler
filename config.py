@@ -27,6 +27,7 @@ LLM_MODEL_PATH = "models/qwen2.5-3b-instruct-q4_k_m.gguf"
 WHISPER_MODEL_SIZE = "deepdml/faster-distil-whisper-large-v3.5"
 WHISPER_DEVICE = "cuda"
 WHISPER_COMPUTE = "float16"
+WHISPER_LANGUAGE = "fi"
 
 #Upto 128k or sum
 LLM_CONTEXT_SIZE = 3000 #brotha,you need to increse this if ya want ya memory feature to work 
