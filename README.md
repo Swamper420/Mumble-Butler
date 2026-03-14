@@ -62,6 +62,7 @@ Additional options control logging, device selection, and model parameters.
    python main.py
    ```
    This starts the normal Mumble bot runtime **and** local HTTP APIs for LLM + voice transcription by default.
+   If your `config.py` disables those API flags, run `python main.py --api` to force-enable both API servers with the bot runtime.
 2. Speak a command, e.g. **“Obama, play lo-fi hip hop”**. The bot will respond vocally and stream the audio itself.
 
 Below are some of the supported voice/chat commands:

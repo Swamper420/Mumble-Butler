@@ -1,13 +1,14 @@
 import argparse
 import threading
 import time
+import config
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--api",
         action="store_true",
-        help="Deprecated. This flag has no effect; bot startup handles APIs via config flags (enabled by default)."
+        help="Start bot runtime and force-enable LLM + voice HTTP APIs."
     )
     parser.add_argument(
         "--api-only",
@@ -36,7 +37,9 @@ if __name__ == "__main__":
             voice_server.server_close()
     else:
         if args.api:
-            print("INFO: '--api' is deprecated. Bot startup handles APIs via config flags.")
+            config.START_LLM_API_WITH_BOT = True
+            config.START_VOICE_API_WITH_BOT = True
+            print("INFO: '--api' enabled. Forcing LLM + voice HTTP APIs on with bot runtime.")
         from bot import MadnessBot
         bot = MadnessBot()
         bot.run()

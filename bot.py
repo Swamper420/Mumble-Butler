@@ -146,7 +146,7 @@ class MadnessBot:
             self.mumble.stop()
 
     def _start_api_servers(self):
-        if config.START_LLM_API_WITH_BOT:
+        if getattr(config, "START_LLM_API_WITH_BOT", True):
             try:
                 llm_server = create_llm_api_server(brain=self.brain)
                 llm_thread = threading.Thread(target=llm_server.serve_forever, daemon=True)
@@ -156,7 +156,7 @@ class MadnessBot:
             except Exception as e:
                 print(f"⚠️ Failed to start LLM API server: {e}")
 
-        if config.START_VOICE_API_WITH_BOT:
+        if getattr(config, "START_VOICE_API_WITH_BOT", True):
             try:
                 voice_server = create_voice_api_server(ear=self.ear)
                 voice_thread = threading.Thread(target=voice_server.serve_forever, daemon=True)
