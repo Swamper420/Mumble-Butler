@@ -61,6 +61,7 @@ Additional options control logging, device selection, and model parameters.
    ```bash
    python main.py
    ```
+   This starts the normal Mumble bot runtime **and** local HTTP APIs for LLM + voice transcription by default.
 2. Speak a command, e.g. **“Obama, play lo-fi hip hop”**. The bot will respond vocally and stream the audio itself.
 
 Below are some of the supported voice/chat commands:
@@ -73,9 +74,11 @@ Below are some of the supported voice/chat commands:
 - "mode autoplay|repeat|random|one-shot" – change queue behaviour
 - Text equivalents are available with `?play`, `?skip`, `?volume`, etc.
 
-### External LLM Query API
+### External APIs (LLM + Voice Recognition)
 
-You can also run a lightweight local HTTP API so another program can send prompts and get responses from the same LLM backend:
+When the bot is running normally (`python main.py`), both APIs are available at the same time.
+
+You can also run API-only mode (without connecting to Mumble):
 
 ```bash
 python main.py --api
@@ -85,8 +88,10 @@ Default API settings are in `config.py`:
 - `LLM_API_HOST` (default `127.0.0.1`)
 - `LLM_API_PORT` (default `8080`)
 - `LLM_API_DEFAULT_MAX_TOKENS` (default `650`)
+- `VOICE_API_HOST` (default `127.0.0.1`)
+- `VOICE_API_PORT` (default `8081`)
 
-Example request:
+LLM example request:
 
 ```bash
 curl -X POST http://127.0.0.1:8080/query \
@@ -98,6 +103,14 @@ Health check:
 
 ```bash
 curl http://127.0.0.1:8080/health
+```
+
+Voice transcription example request (`pcm_base64` must be 48kHz mono 16-bit PCM bytes):
+
+```bash
+curl -X POST http://127.0.0.1:8081/transcribe \
+  -H "Content-Type: application/json" \
+  -d '{"pcm_base64":"<base64-encoded-raw-pcm>"}'
 ```
 
 ---

@@ -76,12 +76,20 @@ class _LLMRequestHandler(BaseHTTPRequestHandler):
             super().log_message(format, *args)
 
 
-def run_llm_api_server(host=None, port=None):
+def create_llm_api_server(host=None, port=None, brain=None):
     global _brain
     host = host or config.LLM_API_HOST
     port = port or config.LLM_API_PORT
-    print("🧠 Initializing LLM for API...")
-    _brain = Brain()
+    using_shared_brain = brain is not None
+    if brain is None:
+        print("🧠 Initializing LLM for API...")
+        brain = Brain()
+    _brain = brain
     server = ThreadingHTTPServer((host, port), _LLMRequestHandler)
-    print(f"🌐 LLM API listening on http://{host}:{port}")
+    print(f"🌐 LLM API listening on http://{host}:{port} (shared_brain={using_shared_brain})")
+    return server
+
+
+def run_llm_api_server(host=None, port=None, brain=None):
+    server = create_llm_api_server(host=host, port=port, brain=brain)
     server.serve_forever()
