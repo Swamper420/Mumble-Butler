@@ -35,6 +35,8 @@ if __name__ == "__main__":
             llm_server.server_close()
             voice_server.server_close()
     else:
+        if args.api:
+            print("ℹ️ '--api' is deprecated. Default startup already runs bot + APIs.")
         from bot import MadnessBot
         bot = MadnessBot()
         bot.run()
