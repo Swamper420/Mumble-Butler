@@ -129,3 +129,44 @@ class Brain:
             except Exception as e:
                 print(f"Recommendation error: {e}")
                 return None
+
+
+    # --- NEW METHOD ---
+    def generate_hourly_report(self, active_users, recent_transcripts):
+        if not self.llm: return None
+
+        now = datetime.now().strftime('%H:%M')
+
+        # Format recent transcripts for context
+        transcript_text = ""
+        if recent_transcripts:
+            transcript_text = "\n".join([f"- {t['user']}: {t['text']}" for t in recent_transcripts])
+        else:
+            transcript_text = "No one has spoken recently."
+
+        users_text = ", ".join(active_users) if active_users else "No one else is here."
+
+        prompt = (
+            f"<|im_start|>system\n"
+            f"{config.SYSTEM_PROMPT} "
+            f"It is currently {now}. You are giving a periodic hourly status update to the room. "
+            f"Mention the current time, acknowledge who is in the room ({users_text}), "
+            f"and briefly summarize or comment on the vibe based on the last minute of conversation if any.\n"
+            f"Keep it brief (under 4 sentences), witty, and butler-like.\n<|im_end|>\n"
+            f"<|im_start|>user\n"
+            f"Recent conversation:\n{transcript_text}\n\nGive the status update.\n<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
+
+        try:
+            with self.lock:
+                output = self.llm(
+                    prompt,
+                    max_tokens=350,
+                    stop=["<|im_end|>", "\n"],
+                    echo=False
+                )
+            return output['choices'][0]['text'].strip().replace('"', '')
+        except Exception as e:
+            print(f"Report generation error: {e}")
+            return f"It is {now}. I am unable to assess the situation due to a processing error."
