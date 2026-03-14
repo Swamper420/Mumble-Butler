@@ -10,6 +10,14 @@ IGNORED_USERS = ["YoMusicBot"]
 RECONNECT_DELAY = 5
 
 
+JELLYFIN = {
+    'BASE_URL': "http://127.0.0.1:8096",
+    'USERNAME': "Mumblebotti",
+    'PASSWORD': "todellavaikeasalasanatahan",
+    'API_KEY': "f36e4dfdsfggdfgfd106d5asdfgsfdg0274ca",
+}
+
+
 # --- PATHS ---
 STATS_FILE = "user_stats.csv"
 CHIME_FILE = "chime.wav"
@@ -50,12 +58,13 @@ VOICE_TRIGGERS = {
     'PLAY_MUSIC': ["music"],            # Triggers generic play
     'PLAY_SPECIFIC': ["play", "queue"], # Triggers search/youtube play
     'RECOMMEND': ["recommend"],
-    'STOP': ["stop", "silence", "pause"],  # stops playback completely
+    'STOP': ["stop", "silence"],
     'SKIP': ["skip", "next"],
-    'PLAY_FILE': ["file", "f"],         # New: Local file playback
-    'REPEAT': ["repeat"],                # New: Repeat song
-    'MODE':["mode"],
-    'RESUME': ["resume", "continue"]  # words that should resume playback
+    'PLAY_FILE': ["file"],         # New: Local file playback
+    'REPEAT': ["repeat"],
+    'MODE': ["mode"],
+    'REMIND': ["remind"],
+    'JELLYFIN_RANDOM': ["jellyfin", "jelly"]
 
 }
 
@@ -82,18 +91,7 @@ TEXT_TRIGGERS = {
     'FORGET': "?forget",
     'VOICE': "?voice",
     'SAY': "?say",
-    'MEMORY': "?memory",
-    # music-related helpers are handled separately but included here for help text
-    'PLAY': "?play",
-    'NOW': "?now",
-    'QUEUE': "?queue",
-    'SKIP': "?skip",
-    'STOP': "?stop",
-    'PAUSE': "?pause",
-    'RESUME': "?resume",
-    'VOLUME': "?volume",
-    'REPEAT': "?repeat",
-    'MODE': "?mode",
+    'MEMORY': "?memory"
 }
 
 # --- AUDIO PARAMETERS ---
