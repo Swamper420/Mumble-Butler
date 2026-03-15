@@ -59,7 +59,7 @@ class Brain:
 
         try:
             with self.lock:
-                output = self.llm(prompt, max_tokens=max_tokens, stop=["<|im_end|>", "<|im_start|>", "\n"], echo=False)
+                output = self.llm(prompt, max_tokens=max_tokens, stop=["<|im_end|>", "<|im_start|>"], echo=False)
 
             text = output['choices'][0]['text']
             # Clean tags
