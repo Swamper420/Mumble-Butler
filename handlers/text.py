@@ -57,16 +57,14 @@ class TextHandler:
             if arg:
                 self.bot.say_async(arg)
 
-        # --- music commands (previously handled by botamusique) ---
+        # --- music commands forwarded to botamusique ---
         elif cmd == "?play":
             if arg:
                 self.bot.play(arg)
         elif cmd == "?now":
-            now = self.bot.music.now_playing() or "nothing"
-            self.bot.send_chat(f"Now playing: {now}")
+            self.bot.request_now_playing()
         elif cmd == "?queue":
-            q = self.bot.music.queue_list()
-            self.bot.send_chat("Queue: " + (", ".join(q) if q else "empty"))
+            self.bot.request_queue()
         elif cmd == "?skip":
             self.bot.skip()
         elif cmd == "?stop":

@@ -321,6 +321,46 @@ class MadnessBot:
             try: self.mumble.channels[self.my_channel_id].send_text_message(text)
             except: pass
 
+    def _send_music_command(self, command_key, argument=""):
+        """Forward a music command to botamusique via Mumble text chat."""
+        command = config.MUMBLE_COMMANDS[command_key]
+        payload = command if not argument else f"{command} {argument}"
+        self.send_chat(payload)
+        return payload
+
+    def play(self, query):
+        return self._send_music_command("PLAY_YOUTUBE", query)
+
+    def play_file(self, path):
+        return self._send_music_command("FILE", path)
+
+    def skip(self):
+        return self._send_music_command("SKIP")
+
+    def stop_music(self):
+        return self._send_music_command("STOP")
+
+    def pause_music(self):
+        return self._send_music_command("PAUSE")
+
+    def resume_music(self):
+        return self._send_music_command("PLAY_GENERIC")
+
+    def set_volume(self, level):
+        return self._send_music_command("VOLUME", str(max(0, min(100, level))))
+
+    def repeat_music(self, count):
+        return self._send_music_command("REPEAT", str(max(0, count)))
+
+    def set_mode(self, mode):
+        return self._send_music_command("MODE", mode)
+
+    def request_now_playing(self):
+        return self._send_music_command("NOW_PLAYING")
+
+    def request_queue(self):
+        return self._send_music_command("QUEUE")
+
     # --- CALLBACKS ---
 
     def on_sound_received(self, user, sound_chunk):

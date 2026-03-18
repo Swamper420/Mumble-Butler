@@ -120,7 +120,7 @@ class VoiceHandler:
             triggers = "|".join(config.VOICE_TRIGGERS['PLAY_FILE'])
             q = re.search(rf"(?:{triggers})\s+(.*)", content)
             if q:
-                self.bot.play(q.group(1))
+                self.bot.play_file(q.group(1))
             return True
 
         # 11. Repeat

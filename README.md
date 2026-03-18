@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Python](https://img.shields.io/badge/python-3.10%2B-blue)]() [![Mumble](https://img.shields.io/badge/mumble-1.4%2B-orange)]()
 
-A modern, extensible AI assistant for Mumble servers. **Mumble Butler** listens to voice commands, understands natural language using a local LLM, replies with synthesized speech, and **plays music natively** (no external bots required). It now replaces the old Botamusique integration entirely. Designed for privacy, performance, and ease of customization.
+A modern, extensible AI assistant for Mumble servers. **Mumble Butler** listens to voice commands, understands natural language using a local LLM, replies with synthesized speech, and can **control music playback through botamusique commands**. Designed for privacy, performance, and ease of customization.
 
 ---
 
@@ -11,7 +11,7 @@ A modern, extensible AI assistant for Mumble servers. **Mumble Butler** listens 
 - **Speech‑to‑Text (STT)** – Real-time transcription using `faster-whisper`.
 - **Conversational Intelligence** – Local GGUF models driven by `llama-cpp-python`.
 - **Text‑to‑Speech (TTS)** – Natural replies via `Kokoro-82M`.
-- **Built‑in Music Player** – Search/queue tracks from YouTube or local files, manage volume/queue/modes and hear audio directly from the bot.
+- **Botamusique Music Control** – Forward search, queue, playback, volume, and mode commands to a botamusique bot in the same Mumble channel.
 - **Context‑Aware Recommendations** – Ask for a mood or genre and the bot queues matching tracks automatically.
 - **Highly Configurable** – Behavior is controlled through `config.py`; no code changes required.
 
@@ -23,9 +23,8 @@ A modern, extensible AI assistant for Mumble servers. **Mumble Butler** listens 
 
 1. Python **3.10+**
 2. Mumble server (Murmur) **1.4+**
-3. FFmpeg installed and on `PATH` (used for decoding external audio sources)
-4. `yt-dlp` available in the environment (used for YouTube searches and URLs)
-5. (Optional) NVIDIA GPU & CUDA for accelerated inference
+3. A botamusique bot in the same Mumble channel for music playback
+4. (Optional) NVIDIA GPU & CUDA for accelerated inference
 
 ### Installation
 
@@ -63,18 +62,18 @@ Additional options control logging, device selection, and model parameters.
    ```
    This starts the normal Mumble bot runtime **and** local HTTP APIs for LLM + voice transcription by default.
    If your `config.py` disables those API flags, run `python main.py --api` to force-enable both API servers with the bot runtime.
-2. Speak a command, e.g. **“Obama, play lo-fi hip hop”**. The bot will respond vocally and stream the audio itself.
+2. Speak a command, e.g. **“Obama, play lo-fi hip hop”**. The bot will forward the matching botamusique command into Mumble chat.
 
 Below are some of the supported voice/chat commands:
 
-- "play <query>" / "queue <query>" – add a song/search term to the queue
+- "play <query>" / "queue <query>" – forward a botamusique search command
 - "skip" / "next" – skip current track
 - "stop" / "pause" / "resume" – control playback
 - "volume <0‑100>" – set volume percentage
 - "repeat 2" – repeat current track twice
 - "mode autoplay|repeat|random|one-shot" – change queue behaviour
 - "shut up" / "be quiet" – stop the bot from listening
-- Text equivalents are available with `?play`, `?skip`, `?volume`, etc.
+- Text equivalents are available with `?play`, `?now`, `?queue`, `?skip`, `?volume`, etc.
 
 ### External APIs (LLM + Voice Recognition)
 
@@ -143,7 +142,7 @@ graph LR
     User[User (Voice)] -->|Audio| Butler[Mumble Butler]
     Butler -->|STT / NLU| LLM
     Butler -->|TTS| User
-    Butler -->|Internal Player| MumbleServer
+    Butler -->|Botamusique Commands| MumbleServer
 ```
 
 ---
