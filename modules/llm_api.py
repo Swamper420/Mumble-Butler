@@ -63,8 +63,8 @@ class _LLMRequestHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            # Brain.generate_response uses an internal lock, so this call is safe under ThreadingHTTPServer.
-            response = brain.generate_response(prompt.strip(), max_tokens=max_tokens)
+            # Brain.generate_api_response uses an internal lock, so this call is safe under ThreadingHTTPServer.
+            response = brain.generate_api_response(prompt.strip(), max_tokens=max_tokens)
         except Exception as e:
             print(f"LLM processing failed: {e}")
             self._send_json(500, {"error": "LLM processing failed"})

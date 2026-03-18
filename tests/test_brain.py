@@ -47,7 +47,7 @@ class TestGenerateResponseStopTokens(unittest.TestCase):
 
 
 class TestSystemPromptNotBrief(unittest.TestCase):
-    """Ensure the system prompt no longer instructs the model to be brief."""
+    """Ensure the bot system prompt instructs concise answers."""
 
     def test_system_prompt_does_not_say_brief(self):
         self.assertNotIn(
@@ -62,6 +62,96 @@ class TestSystemPromptNotBrief(unittest.TestCase):
             config.SYSTEM_PROMPT,
             "SYSTEM_PROMPT should still instruct the model to respond in ENGLISH"
         )
+
+    def test_system_prompt_instructs_short_responses(self):
+        prompt_lower = config.SYSTEM_PROMPT.lower()
+        self.assertTrue(
+            "short" in prompt_lower or "concise" in prompt_lower,
+            "SYSTEM_PROMPT should instruct the bot to keep responses short/concise"
+        )
+
+
+class TestApiSystemPrompt(unittest.TestCase):
+    """Ensure API_SYSTEM_PROMPT exists and differs from SYSTEM_PROMPT."""
+
+    def test_api_system_prompt_exists(self):
+        self.assertTrue(
+            hasattr(config, 'API_SYSTEM_PROMPT'),
+            "config must define API_SYSTEM_PROMPT"
+        )
+
+    def test_api_system_prompt_contains_english_instruction(self):
+        self.assertIn(
+            "ENGLISH",
+            config.API_SYSTEM_PROMPT,
+            "API_SYSTEM_PROMPT should instruct the model to respond in ENGLISH"
+        )
+
+    def test_api_system_prompt_encourages_detailed_answers(self):
+        prompt_lower = config.API_SYSTEM_PROMPT.lower()
+        self.assertTrue(
+            "detailed" in prompt_lower or "thorough" in prompt_lower,
+            "API_SYSTEM_PROMPT should encourage detailed/thorough answers"
+        )
+
+    def test_api_prompt_does_not_say_short(self):
+        prompt_lower = config.API_SYSTEM_PROMPT.lower()
+        self.assertNotIn(
+            "short",
+            prompt_lower,
+            "API_SYSTEM_PROMPT should not tell the model to keep answers short"
+        )
+
+
+class TestGenerateApiResponse(unittest.TestCase):
+    """Ensure generate_api_response uses API_SYSTEM_PROMPT."""
+
+    def test_api_response_uses_api_system_prompt(self):
+        llm_mock = MagicMock(return_value={
+            "choices": [{"text": "A detailed answer about the topic."}]
+        })
+
+        brain = _make_brain_with_mock_llm(llm_mock)
+        brain.generate_api_response("Tell me about Python")
+
+        _args, _kwargs = llm_mock.call_args
+        prompt_str = _args[0]
+        self.assertIn(
+            "detailed",
+            prompt_str.lower(),
+            "generate_api_response should include API_SYSTEM_PROMPT (with 'detailed')"
+        )
+
+    def test_api_response_returns_text(self):
+        llm_mock = MagicMock(return_value={
+            "choices": [{"text": "A thorough answer."}]
+        })
+
+        brain = _make_brain_with_mock_llm(llm_mock)
+        result = brain.generate_api_response("Question")
+        self.assertEqual(result, "A thorough answer.")
+
+    def test_api_response_offline(self):
+        llm_mock = MagicMock()
+        brain = _make_brain_with_mock_llm(llm_mock)
+        brain.llm = None
+        result = brain.generate_api_response("Question")
+        self.assertEqual(result, "My brain is offline.")
+
+
+class TestShutupKeywords(unittest.TestCase):
+    """Ensure SHUTUP_KEYWORDS is defined in config."""
+
+    def test_shutup_keywords_exist(self):
+        self.assertTrue(
+            hasattr(config, 'SHUTUP_KEYWORDS'),
+            "config must define SHUTUP_KEYWORDS"
+        )
+        self.assertIsInstance(config.SHUTUP_KEYWORDS, list)
+        self.assertGreater(len(config.SHUTUP_KEYWORDS), 0)
+
+    def test_shutup_keywords_contains_shut_up(self):
+        self.assertIn("shut up", config.SHUTUP_KEYWORDS)
 
 
 if __name__ == "__main__":
