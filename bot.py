@@ -17,6 +17,7 @@ from modules.brain import Brain
 from modules.ears import Ear
 from modules.voice import Voice
 from modules.audio_manager import AudioManager
+from modules.music_player import MusicPlayer
 from modules.llm_api import create_llm_api_server
 from modules.voice_api import create_voice_api_server
 
@@ -37,6 +38,7 @@ class MadnessBot:
         self.ear = Ear()
         self.voice = Voice()
         self.audio_manager = AudioManager()
+        self.music = MusicPlayer(self)
 
         # Logic Handlers
         self.text_handler = TextHandler(self)
@@ -315,11 +317,56 @@ class MadnessBot:
         """Queues a message to be spoken by TTS."""
         self.loop.call_soon_threadsafe(self.queue.put_nowait, text)
 
+    def clear_voice_queue(self):
+        """Clears all pending TTS messages from the queue."""
+        def _clear():
+            while not self.queue.empty():
+                try:
+                    self.queue.get_nowait()
+                    self.queue.task_done()
+                except asyncio.QueueEmpty:
+                    break
+        self.loop.call_soon_threadsafe(_clear)
+
     def send_chat(self, text):
         """Sends a text message to the current Mumble channel."""
         if self.mumble and self.my_channel_id is not None:
             try: self.mumble.channels[self.my_channel_id].send_text_message(text)
             except: pass
+
+    # --- MUSIC CONTROL WRAPPERS ---
+
+    def play(self, query):
+        """Queue a track for playback."""
+        self.music.queue_track(query)
+
+    def skip(self):
+        """Skip the current track."""
+        self.music.skip()
+
+    def stop_music(self):
+        """Stop playback and clear the music queue."""
+        self.music.stop()
+
+    def pause_music(self):
+        """Pause music playback."""
+        self.music.pause()
+
+    def resume_music(self):
+        """Resume music playback."""
+        self.music.resume()
+
+    def set_volume(self, level):
+        """Set playback volume (0-100)."""
+        self.music.set_volume(level)
+
+    def set_mode(self, mode):
+        """Set playback mode."""
+        self.music.set_mode(mode)
+
+    def repeat_music(self, count):
+        """Repeat the current track."""
+        self.music.repeat(count)
 
     # --- CALLBACKS ---
 
