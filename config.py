@@ -82,6 +82,7 @@ VOICE_TRIGGERS = {
     'RECOMMEND': ["recommend"],
     'STOP': ["stop", "silence"],
     'SKIP': ["skip", "next"],
+    'RESUME': ["resume", "unpause", "continue"],
     'PLAY_FILE': ["file"],         # New: Local file playback
     'REPEAT': ["repeat"],
     'MODE': ["mode"],
