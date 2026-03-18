@@ -192,8 +192,7 @@ class MadnessBot:
     async def tts_worker(self):
         """Consumes text from queue and generates speech."""
         while True:
-            text = await self.queue.get()
-            speech_generation = self.speech_generation
+            speech_generation, text = await self.queue.get()
             if self.mumble and self.mumble.sound_output:
                 # Generate PCM in thread pool to avoid blocking async loop
                 pcm_data = await self.loop.run_in_executor(
@@ -315,7 +314,8 @@ class MadnessBot:
 
     def say_async(self, text):
         """Queues a message to be spoken by TTS."""
-        self.loop.call_soon_threadsafe(self.queue.put_nowait, text)
+        speech_generation = self.speech_generation
+        self.loop.call_soon_threadsafe(self.queue.put_nowait, (speech_generation, text))
 
     def stop_speaking(self):
         """Stops current and queued TTS without disabling listening."""

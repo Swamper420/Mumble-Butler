@@ -1,5 +1,4 @@
 """Tests for botamusique music command forwarding."""
-import asyncio
 import importlib.util
 import sys
 import types
@@ -130,9 +129,27 @@ class MusicCommandForwardingTests(unittest.TestCase):
         madness_bot = bot_module.MadnessBot.__new__(bot_module.MadnessBot)
         madness_bot.speech_generation = 0
         madness_bot.loop = SimpleNamespace(call_soon_threadsafe=lambda func, *args: func(*args))
-        madness_bot.queue = asyncio.Queue()
-        madness_bot.queue.put_nowait("one")
-        madness_bot.queue.put_nowait("two")
+        class FakeAsyncQueue:
+            def __init__(self):
+                self.items = []
+
+            def put_nowait(self, item):
+                self.items.append(item)
+
+            def get_nowait(self):
+                if not self.items:
+                    raise bot_module.asyncio.QueueEmpty()
+                return self.items.pop(0)
+
+            def task_done(self):
+                return None
+
+            def empty(self):
+                return not self.items
+
+        madness_bot.queue = FakeAsyncQueue()
+        madness_bot.queue.put_nowait((0, "one"))
+        madness_bot.queue.put_nowait((0, "two"))
         sound_output = SimpleNamespace(clear_buffer=MagicMock())
         madness_bot.mumble = SimpleNamespace(sound_output=sound_output)
 
