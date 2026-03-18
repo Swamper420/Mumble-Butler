@@ -129,4 +129,37 @@ class VoiceHandler:
             self.bot.repeat_music(count)
             return True
 
+        # 12. Remind
+        if any(w in content for w in config.VOICE_TRIGGERS.get('REMIND', [])):
+            reminder = self._parse_reminder(content)
+            if reminder:
+                seconds, time_text, message = reminder
+                self.bot.schedule_reminder(seconds, message)
+                self.bot.say_async(f"I will remind you in {time_text}.")
+            else:
+                self.bot.say_async("Try saying remind me in 10 minutes about something.")
+            return True
+
         return False
+
+    def _parse_reminder(self, content):
+        match = re.search(
+            r"\bremind(?: me)? in (\d+)\s+(second|minute|hour)s?\b\s+(?:(?:about|to)\s+)?(.+)",
+            content,
+        )
+        if not match:
+            return None
+
+        amount = int(match.group(1))
+        unit = match.group(2)
+        message = (match.group(3) or "").strip()
+        if not message:
+            return None
+        unit_seconds = {
+            "second": 1,
+            "minute": 60,
+            "hour": 3600,
+        }
+        normalized_unit = f"{unit}s" if amount != 1 else unit
+
+        return amount * unit_seconds[unit], f"{amount} {normalized_unit}", message
