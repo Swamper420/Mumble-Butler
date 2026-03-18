@@ -78,6 +78,16 @@ class TestShutupKeywordHandling(unittest.TestCase):
                 bot.schedule_reminder.assert_called_once_with(expected_seconds, expected_message)
                 bot.say_async.assert_called_once_with(expected_confirmation)
 
+    def test_now_playing_voice_command_requests_current_track(self):
+        handler, bot = _make_handler()
+
+        result = handler.handle("TestUser", "obama what's playing")
+
+        self.assertTrue(result)
+        bot.request_now_playing.assert_called_once_with()
+        bot.play.assert_not_called()
+        bot.say_async.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

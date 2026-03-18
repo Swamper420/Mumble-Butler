@@ -85,6 +85,7 @@ VOICE_TRIGGERS = {
     'PLAY_FILE': ["file"],         # New: Local file playback
     'REPEAT': ["repeat"],
     'MODE': ["mode"],
+    'NOW_PLAYING': ["now playing", "whats playing", "what is playing", "current track", "current song"],
     'REMIND': ["remind"],
     'JELLYFIN_RANDOM': ["jellyfin", "jelly"]
 

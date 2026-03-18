@@ -67,6 +67,7 @@ Additional options control logging, device selection, and model parameters.
 Below are some of the supported voice/chat commands:
 
 - "play <query>" / "queue <query>" – forward a botamusique search command
+- "what's playing" / "now playing" – ask botamusique for the current track
 - "skip" / "next" – skip current track
 - "stop" / "pause" / "resume" – control playback
 - "volume <0‑100>" – set volume percentage

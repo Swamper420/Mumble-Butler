@@ -83,7 +83,12 @@ class VoiceHandler:
                 self.bot.play(song)
             return True
 
-        # 5. Play / Queue (Specific)
+        # 5. Now Playing
+        if any(w in content for w in config.VOICE_TRIGGERS.get('NOW_PLAYING', [])):
+            self.bot.request_now_playing()
+            return True
+
+        # 6. Play / Queue (Specific)
         if any(w in content for w in config.VOICE_TRIGGERS['PLAY_SPECIFIC']):
             triggers = "|".join(config.VOICE_TRIGGERS['PLAY_SPECIFIC'])
             q = re.search(rf"(?:{triggers})\s+(.*)", content)
@@ -91,7 +96,7 @@ class VoiceHandler:
                 self.bot.play(q.group(1))
             return True
 
-        # 6. Play (Generic Music / "music")
+        # 7. Play (Generic Music / "music")
         if any(w in content for w in config.VOICE_TRIGGERS['PLAY_MUSIC']):
             rec = self.bot.brain.recommend_song("random music")
             if rec:
@@ -99,22 +104,22 @@ class VoiceHandler:
                 self.bot.play(rec)
             return True
 
-        # 7. Resume (if paused)
+        # 8. Resume (if paused)
         if any(w in content for w in config.VOICE_TRIGGERS.get('RESUME', [])):
             self.bot.resume_music()
             return True
 
-        # 8. Stop (full halt)
+        # 9. Stop (full halt)
         if any(w in content for w in config.VOICE_TRIGGERS['STOP']):
             self.bot.stop_music()
             return True
 
-        # 9. Skip / Next
+        # 10. Skip / Next
         if any(w in content for w in config.VOICE_TRIGGERS['SKIP']):
             self.bot.skip()
             return True
 
-        # 10. File
+        # 11. File
         if any(w in content for w in config.VOICE_TRIGGERS['PLAY_FILE']):
             triggers = "|".join(config.VOICE_TRIGGERS['PLAY_FILE'])
             q = re.search(rf"(?:{triggers})\s+(.*)", content)
@@ -122,14 +127,14 @@ class VoiceHandler:
                 self.bot.play_file(q.group(1))
             return True
 
-        # 11. Repeat
+        # 12. Repeat
         if any(w in content for w in config.VOICE_TRIGGERS['REPEAT']):
             m = re.search(r"(\d+)", content)
             count = int(m.group(1)) if m else 1
             self.bot.repeat_music(count)
             return True
 
-        # 12. Remind
+        # 13. Remind
         if any(w in content for w in config.VOICE_TRIGGERS.get('REMIND', [])):
             reminder = self._parse_reminder(content)
             if reminder:
