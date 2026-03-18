@@ -73,6 +73,7 @@ Below are some of the supported voice/chat commands:
 - "volume <0‑100>" – set volume percentage
 - "repeat 2" – repeat current track twice
 - "mode autoplay|repeat|random|one-shot" – change queue behaviour
+- "shut up" / "be quiet" – stop the bot from listening
 - Text equivalents are available with `?play`, `?skip`, `?volume`, etc.
 
 ### External APIs (LLM + Voice Recognition)
@@ -91,6 +92,8 @@ Default API settings are in `config.py`:
 - `LLM_API_DEFAULT_MAX_TOKENS` (default `650`)
 - `VOICE_API_HOST` (default `127.0.0.1`)
 - `VOICE_API_PORT` (default `8081`)
+
+The API uses its own system prompt (`API_SYSTEM_PROMPT`) that encourages detailed, thorough answers, while the Mumble bot uses `SYSTEM_PROMPT` which keeps voice responses short and concise. Both prompts are configurable in `config.py`.
 
 LLM example request:
 
@@ -126,6 +129,9 @@ curl -X POST http://127.0.0.1:8081/transcribe \
 | `PASSWORD`         | Server password (if any)                | `"password"`          |
 | `TARGET_CHANNEL`   | Channel to join                         | `"General"`           |
 | `ACTIVATION_KEYWORD` | Word that activates the bot            | `"obama"`             |
+| `SHUTUP_KEYWORDS`  | Phrases that silence the bot            | `["shut up", ...]`   |
+| `SYSTEM_PROMPT`    | Bot system prompt (short responses)     | *(see config.py)*    |
+| `API_SYSTEM_PROMPT`| API system prompt (detailed responses)  | *(see config.py)*    |
 | `LLM_MODEL_PATH`   | Path to local GGUF model                | `"models/..."`        |
 
 ---

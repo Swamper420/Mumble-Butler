@@ -86,6 +86,31 @@ class Brain:
         with self.lock:
             self.history = []
 
+    def generate_api_response(self, user_prompt: str, max_tokens=650) -> str:
+        """Generate a long-form response intended for the HTTP API."""
+        if not self.llm:
+            return "My brain is offline."
+
+        now = datetime.now().strftime('%H:%M')
+        api_system = getattr(config, 'API_SYSTEM_PROMPT', config.SYSTEM_PROMPT)
+        full_system = f"{api_system}\nContext: It is {now}."
+
+        prompt = (
+            f"<|im_start|>system\n{full_system}<|im_end|>\n"
+            f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
+
+        try:
+            with self.lock:
+                output = self.llm(prompt, max_tokens=max_tokens, stop=["<|im_end|>", "<|im_start|>"], echo=False)
+
+            text = output['choices'][0]['text']
+            text = text.replace("<|im_start|>", "").replace("<|im_end|>", "")
+            return text.strip().replace('"', '').replace("Obama:", "")
+        except Exception as e:
+            return f"Thinking error: {e}"
+
     def recommend_song(self, description):
             if not self.llm: return None
 
