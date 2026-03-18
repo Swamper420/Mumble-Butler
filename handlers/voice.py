@@ -144,7 +144,7 @@ class VoiceHandler:
 
     def _parse_reminder(self, content):
         match = re.search(
-            r"\bremind(?: me)? in (\d+)\s+(second|seconds|minute|minutes|hour|hours)\b(?:\s+(.*))?",
+            r"\bremind(?: me)? in (\d+)\s+(second|minute|hour)s?\b\s+(?:(?:about|to)\s+)?(.+)",
             content,
         )
         if not match:
@@ -155,25 +155,11 @@ class VoiceHandler:
         message = (match.group(3) or "").strip()
         if not message:
             return None
-
-        if message.startswith("about "):
-            message = message[6:].strip()
-        elif message.startswith("to "):
-            message = message[3:].strip()
-
-        if not message:
-            return None
-
         unit_seconds = {
             "second": 1,
-            "seconds": 1,
             "minute": 60,
-            "minutes": 60,
             "hour": 3600,
-            "hours": 3600,
         }
-        normalized_unit = unit.rstrip("s")
-        if amount != 1:
-            normalized_unit += "s"
+        normalized_unit = f"{unit}s" if amount != 1 else unit
 
         return amount * unit_seconds[unit], f"{amount} {normalized_unit}", message
