@@ -138,6 +138,13 @@ class TestGenerateApiResponse(unittest.TestCase):
         result = brain.generate_api_response("Question")
         self.assertEqual(result, "My brain is offline.")
 
+    def test_api_response_error_handling(self):
+        llm_mock = MagicMock(side_effect=RuntimeError("LLM crashed"))
+        brain = _make_brain_with_mock_llm(llm_mock)
+        result = brain.generate_api_response("Question")
+        self.assertIn("Thinking error", result)
+        self.assertIn("LLM crashed", result)
+
 
 class TestShutupKeywords(unittest.TestCase):
     """Ensure SHUTUP_KEYWORDS is defined in config."""
