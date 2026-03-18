@@ -50,6 +50,7 @@ class MadnessBot:
         # Concurrency
         self.loop = asyncio.new_event_loop()
         self.queue = asyncio.Queue()
+        self.speech_generation = 0
         self.executor = ThreadPoolExecutor(max_workers=40)
 
         self.recent_transcripts = []
@@ -192,6 +193,7 @@ class MadnessBot:
         """Consumes text from queue and generates speech."""
         while True:
             text = await self.queue.get()
+            speech_generation = self.speech_generation
             if self.mumble and self.mumble.sound_output:
                 # Generate PCM in thread pool to avoid blocking async loop
                 pcm_data = await self.loop.run_in_executor(
@@ -199,7 +201,7 @@ class MadnessBot:
                     self.voice.generate_pcm,
                     text
                 )
-                if pcm_data:
+                if pcm_data and speech_generation == self.speech_generation:
                     try: self.mumble.sound_output.add_sound(pcm_data)
                     except: pass
             self.queue.task_done()
@@ -314,6 +316,27 @@ class MadnessBot:
     def say_async(self, text):
         """Queues a message to be spoken by TTS."""
         self.loop.call_soon_threadsafe(self.queue.put_nowait, text)
+
+    def stop_speaking(self):
+        """Stops current and queued TTS without disabling listening."""
+        self.speech_generation += 1
+
+        def _clear_tts_queue():
+            while True:
+                try:
+                    self.queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                else:
+                    self.queue.task_done()
+
+        self.loop.call_soon_threadsafe(_clear_tts_queue)
+
+        sound_output = getattr(getattr(self, "mumble", None), "sound_output", None)
+        clear_buffer = getattr(sound_output, "clear_buffer", None)
+        if callable(clear_buffer):
+            try: clear_buffer()
+            except: pass
 
     def send_chat(self, text):
         """Sends a text message to the current Mumble channel."""

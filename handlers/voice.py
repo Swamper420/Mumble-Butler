@@ -28,8 +28,7 @@ class VoiceHandler:
         # 2. Check for shut-up keyword before anything else
         shutup_keywords = getattr(config, 'SHUTUP_KEYWORDS', [])
         if any(kw in content for kw in shutup_keywords):
-            self.bot.listening_enabled = False
-            self.bot.say_async("Fine, I'll be quiet.")
+            self.bot.stop_speaking()
             return True
 
         # Play chime if configured

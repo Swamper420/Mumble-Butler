@@ -1,4 +1,5 @@
 """Tests for botamusique music command forwarding."""
+import asyncio
 import importlib.util
 import sys
 import types
@@ -123,6 +124,23 @@ class MusicCommandForwardingTests(unittest.TestCase):
 
         self.assertTrue(handled)
         bot.play_file.assert_called_once_with("local track")
+
+    def test_stop_speaking_clears_pending_tts_and_audio_buffer(self):
+        bot_module = _load_bot_module()
+        madness_bot = bot_module.MadnessBot.__new__(bot_module.MadnessBot)
+        madness_bot.speech_generation = 0
+        madness_bot.loop = SimpleNamespace(call_soon_threadsafe=lambda func, *args: func(*args))
+        madness_bot.queue = asyncio.Queue()
+        madness_bot.queue.put_nowait("one")
+        madness_bot.queue.put_nowait("two")
+        sound_output = SimpleNamespace(clear_buffer=MagicMock())
+        madness_bot.mumble = SimpleNamespace(sound_output=sound_output)
+
+        madness_bot.stop_speaking()
+
+        self.assertEqual(madness_bot.speech_generation, 1)
+        self.assertTrue(madness_bot.queue.empty())
+        sound_output.clear_buffer.assert_called_once_with()
 
 
 if __name__ == "__main__":
