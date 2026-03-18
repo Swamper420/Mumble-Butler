@@ -90,19 +90,21 @@ VOICE_TRIGGERS = {
 
 }
 
-# --- OUTPUT COMMANDS (legacy) ---
-# These were used when commands were forwarded to an external
-# botamusique instance.  They are kept here for reference but
-# are no longer required by the internal player.
+# --- BOTAMUSIQUE COMMANDS ---
+# These commands are sent into the Mumble channel chat so an
+# external botamusique instance can handle all music playback.
 MUMBLE_COMMANDS = {
     'VOLUME': "!volume",
     'PLAY_GENERIC': "!play",
     'PLAY_YOUTUBE': "!yplay",
     'PAUSE': "!pause",
+    'STOP': "!stop",
     'SKIP': "!skip",
     'FILE': "!file",    # Maps to !file or !f
     'REPEAT': "!repeat",
-    'MODE': "!mode"
+    'MODE': "!mode",
+    'NOW_PLAYING': "!np",
+    'QUEUE': "!queue"
 }
 
 # --- TEXT CHAT TRIGGERS ---

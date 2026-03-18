@@ -2,5 +2,4 @@ pymumble_py3
 faster-whisper
 llama-cpp-python
 kokoro
-yt-dlp
 numpy
