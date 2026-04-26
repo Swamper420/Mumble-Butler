@@ -1,177 +1,337 @@
-# Mumble Butler
+# 🎙️ Mumble-Butler
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Python](https://img.shields.io/badge/python-3.10%2B-blue)]() [![Mumble](https://img.shields.io/badge/mumble-1.4%2B-orange)]()
+A self-hosted AI voice butler for [Mumble](https://www.mumble.info/) — listens to voice in your channel, answers questions, controls music, and now provides live CS2 match commentary.
 
-A modern, extensible AI assistant for Mumble servers. **Mumble Butler** listens to voice commands, understands natural language using a local LLM, replies with synthesized speech, and can **control music playback through botamusique commands**. Designed for privacy, performance, and ease of customization.
-
----
-
-## 🧩 Core Capabilities
-
-- **Speech‑to‑Text (STT)** – Real-time transcription using `faster-whisper`.
-- **Conversational Intelligence** – Local GGUF models driven by `llama-cpp-python`.
-- **Text‑to‑Speech (TTS)** – Natural replies via `Kokoro-82M`.
-- **Botamusique Music Control** – Forward search, queue, playback, volume, and mode commands to a botamusique bot in the same Mumble channel.
-- **Context‑Aware Recommendations** – Ask for a mood or genre and the bot queues matching tracks automatically.
-- **Highly Configurable** – Behavior is controlled through `config.py`; no code changes required.
+Built around a local LLM ([llama-cpp-python](https://github.com/abetlen/llama-cpp-python)), [faster-whisper](https://github.com/SYSTRAN/faster-whisper) for speech-to-text, and [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) for text-to-speech — everything runs on-device, no cloud required.
 
 ---
 
-## 🚀 Quick Start
+## Features
 
-### Prerequisites
+### 🧠 AI Conversation
+- Wake-word activation (default: `obama`, `opama`, `opal`, `opa`)
+- Answers natural language questions via a local LLM
+- Per-user conversation memory (toggleable)
+- Per-user random personality assignment on channel join — five distinct personas, each with their own TTS voice
 
-1. Python **3.10+**
-2. Mumble server (Murmur) **1.4+**
-3. A botamusique bot in the same Mumble channel for music playback
-4. (Optional) NVIDIA GPU & CUDA for accelerated inference
+### 🎵 Music Control
+Forwards commands to [botamusique](https://github.com/azlux/botamusique) via Mumble text chat:
 
-### Installation
+| Voice command | Action |
+|---|---|
+| *Obama, play \<query\>* | Queue a YouTube track |
+| *Obama, music* | Queue a random AI-recommended track |
+| *Obama, recommend \<vibe\>* | AI song recommendation based on mood/chat context |
+| *Obama, skip* / *next* | Skip current track |
+| *Obama, stop* / *silence* | Stop playback |
+| *Obama, volume \<0–100\>* | Set volume |
+| *Obama, repeat \<n\>* | Repeat current track n times |
+| *Obama, mode \<one-shot\|autoplay\|repeat\|random\>* | Set playback mode |
+
+### 🎮 CS2 Live Commentary
+Receives real-time match data from CS2 via **Game State Integration** (GSI) and announces events in the Mumble channel:
+
+- **Kill feed** — buffers kills for 3 seconds, then delivers in-character LLM commentary scaled to the event (single kill → mild, double → excited, ACE → unhinged)
+- **Round-end debrief** — post-round economic analysis: who can full-buy, who is forced to eco, K/D/A highlights, and score update
+- **Bomb planted** — instant quip when the bomb goes down
+- **Game phase announcements** — half-time, game over, warmup
+
+### ⏰ Other Features
+- **Reminders** — *"Obama, remind me in 10 minutes to check the oven"*
+- **Hourly status report** — LLM-generated hourly room update mentioning active users and conversation vibe
+- **Status check** — *"Obama, status"* → uptime, LLM/STT/TTS health
+- **Ping** — *"Obama, ping"* → "Pong! I am here."
+- **Forget** — *"Obama, forget"* → wipes conversation memory
+
+### 🌐 HTTP APIs (local network)
+Two optional HTTP servers start alongside the bot:
+
+| Server | Default port | Endpoints |
+|---|---|---|
+| LLM API | `8080` | `POST /query`, `GET /health`, `POST /reset_memory` |
+| Voice API (STT) | `8081` | `POST /transcribe`, `GET /health` |
+
+---
+
+## Architecture
+
+```
+main.py
+└── bot.py  (MadnessBot)
+    ├── modules/
+    │   ├── brain.py        — LLM wrapper, memory, song recommender, CS2 commentary
+    │   ├── ears.py         — faster-whisper STT
+    │   ├── voice.py        — Kokoro TTS → 48 kHz PCM
+    │   ├── audio_manager.py — per-user audio stream buffering
+    │   ├── cs2_gsi.py      — CS2 Game State Integration HTTP receiver + event engine
+    │   ├── recommender.py  — iTunes-backed music recommendation
+    │   ├── llm_api.py      — local HTTP LLM API server
+    │   └── voice_api.py    — local HTTP STT API server
+    ├── handlers/
+    │   ├── voice.py        — wake-word detection + voice command routing
+    │   └── text.py         — Mumble text chat command routing
+    └── personalities.py    — per-user persona definitions
+```
+
+---
+
+## Requirements
+
+- Python 3.11+
+- `ffmpeg` (for chime loading)
+- CUDA GPU recommended for real-time STT + LLM inference
+- A running Mumble server
+- [botamusique](https://github.com/azlux/botamusique) for music playback (optional)
+
+### Python dependencies
+
+```
+pip install pymumble_py3 faster-whisper llama-cpp-python kokoro numpy python-dotenv
+```
+
+Or:
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## Setup
+
+### 1. Clone and configure
 
 ```bash
 git clone https://github.com/Swamper420/Mumble-Butler.git
 cd Mumble-Butler
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+cp .env.example .env
 ```
 
-> 🗂️ Place your GGUF model (e.g. `qwen2.5-3b-instruct-q4_k_m.gguf`) under `models/`. Kokoro weights download automatically on first execution.
+Edit `.env` with your values (see [Configuration](#configuration)).
 
-### Configuration
+### 2. Download a GGUF model
 
-Open `config.py` and adjust values to match your environment. Example:
+Place a `llama-cpp`-compatible GGUF model in the `models/` directory.  
+Default expected path: `models/qwen2.5-3b-instruct-q4_k_m.gguf`
 
-```python
-SERVER_IP = "127.0.0.1"
-SERVER_PORT = 64738
-BOT_USERNAME = "Obama"
-PASSWORD = "password"
-TARGET_CHANNEL = "General"
-ACTIVATION_KEYWORD = "obama"
-LLM_MODEL_PATH = "models/qwen2.5-3b-instruct-q4_k_m.gguf"
-```
+Recommended: [Qwen2.5-3B-Instruct-Q4_K_M](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF)
 
-Additional options control logging, device selection, and model parameters.
-
-### Running
-
-1. Launch the assistant:
-   ```bash
-   python main.py
-   ```
-   This starts the normal Mumble bot runtime **and** local HTTP APIs for LLM + voice transcription by default.
-   If your `config.py` disables those API flags, run `python main.py --api` to force-enable both API servers with the bot runtime.
-2. Speak a command, e.g. **“Obama, play lo-fi hip hop”**. The bot will forward the matching botamusique command into Mumble chat.
-
-Below are some of the supported voice/chat commands:
-
-- "play <query>" / "queue <query>" – forward a botamusique search command
-- "skip" / "next" – skip current track
-- "stop" / "pause" / "resume" – control playback
-- "volume <0‑100>" – set volume percentage
-- "repeat 2" – repeat current track twice
-- "mode autoplay|repeat|random|one-shot" – change queue behaviour
-- "shut up" / "be quiet" – stop the bot from listening
-- Text equivalents are available with `?play`, `?now`, `?queue`, `?skip`, `?volume`, etc.
-
-### External APIs (LLM + Voice Recognition)
-
-When the bot is running normally (`python main.py`), both APIs are available at the same time.
-
-You can also run API-only mode (without connecting to Mumble):
+### 3. Run
 
 ```bash
-python main.py --api-only
+python main.py
 ```
 
-Default API settings are in `config.py`:
-- `LLM_API_HOST` (default `127.0.0.1`)
-- `LLM_API_PORT` (default `8080`)
-- `LLM_API_DEFAULT_MAX_TOKENS` (default `650`)
-- `VOICE_API_HOST` (default `127.0.0.1`)
-- `VOICE_API_PORT` (default `8081`)
+---
 
-The API uses its own system prompt (`API_SYSTEM_PROMPT`) that encourages detailed, thorough answers, while the Mumble bot uses `SYSTEM_PROMPT` which keeps voice responses short and concise. Both prompts are configurable in `config.py`.
+## Configuration
 
-LLM example request:
+All settings can be overridden via `.env` or environment variables.
 
+### Mumble connection
+
+| Variable | Default | Description |
+|---|---|---|
+| `MUMBLE_SERVER_IP` | `127.0.0.1` | Mumble server IP |
+| `MUMBLE_SERVER_PORT` | `64738` | Mumble server port |
+| `MUMBLE_BOT_USERNAME` | `Obama` | Bot display name |
+| `MUMBLE_PASSWORD` | *(empty)* | Server password |
+| `MUMBLE_TARGET_CHANNEL` | `General` | Channel to join on connect |
+| `MUMBLE_IGNORED_USERS` | `YoMusicBot` | Comma-separated users to ignore |
+| `MUMBLE_RECONNECT_DELAY` | `5` | Seconds between reconnect attempts |
+
+### AI models
+
+| Variable | Default | Description |
+|---|---|---|
+| `LLM_MODEL_PATH` | `models/qwen2.5-3b-instruct-q4_k_m.gguf` | Path to GGUF model |
+| `LLM_CONTEXT_SIZE` | `2000` | LLM context window tokens |
+| `LLM_GPU_LAYERS` | `-1` | GPU layers (`-1` = all) |
+| `WHISPER_MODEL_SIZE` | `deepdml/faster-distil-whisper-large-v3.5` | Whisper model |
+| `WHISPER_DEVICE` | `cuda` | `cuda` or `cpu` |
+| `WHISPER_COMPUTE` | `float16` | Whisper compute type |
+| `WHISPER_LANGUAGE` | `fi` | STT language code |
+| `KOKORO_VOICE_ID` | `am_michael` | Default TTS voice |
+| `KOKORO_SPEED` | `0.9` | TTS speech speed |
+
+### Behaviour
+
+| Variable | Default | Description |
+|---|---|---|
+| `ACTIVATION_KEYWORDS` | `obama,opama,opal,opa` | Wake words (comma-separated) |
+| `MEMORY_ENABLED` | `True` | Enable per-user conversation memory |
+| `SHUTUP_KEYWORDS` | `shut up,shutup,be quiet` | Instantly interrupt TTS |
+| `SYSTEM_PROMPT` | *(butler persona)* | LLM system prompt |
+
+### HTTP APIs
+
+| Variable | Default | Description |
+|---|---|---|
+| `START_LLM_API_WITH_BOT` | `True` | Start LLM HTTP API on launch |
+| `LLM_API_HOST` | `127.0.0.1` | LLM API bind host |
+| `LLM_API_PORT` | `8080` | LLM API port |
+| `LLM_API_DEFAULT_MAX_TOKENS` | `150` | Default response length |
+| `LLM_API_MEMORY_ENABLED` | `True` | API session memory |
+| `START_VOICE_API_WITH_BOT` | `True` | Start STT HTTP API on launch |
+| `VOICE_API_HOST` | `127.0.0.1` | Voice API bind host |
+| `VOICE_API_PORT` | `8081` | Voice API port |
+
+### CS2 Game State Integration
+
+| Variable | Default | Description |
+|---|---|---|
+| `CS2_GSI_ENABLED` | `True` | Enable CS2 GSI listener |
+| `CS2_GSI_HOST` | `0.0.0.0` | Bind host (use `0.0.0.0` for LAN) |
+| `CS2_GSI_PORT` | `9100` | Port CS2 will POST to |
+| `CS2_KILL_BUFFER_SECONDS` | `3.0` | Multi-kill aggregation window |
+
+### Jellyfin (optional)
+
+| Variable | Default | Description |
+|---|---|---|
+| `JELLYFIN_BASE_URL` | `http://127.0.0.1:8096` | Jellyfin server URL |
+| `JELLYFIN_USERNAME` | *(empty)* | Jellyfin username |
+| `JELLYFIN_PASSWORD` | *(empty)* | Jellyfin password |
+| `JELLYFIN_API_KEY` | *(empty)* | Jellyfin API key |
+
+---
+
+## CS2 Game State Integration Setup
+
+CS2 pushes live match data to a URL you configure. The bot receives it and delivers in-character commentary.
+
+### 1. Copy the config file
+
+Copy `gamestate_integration_mumblebutler.cfg` from the repo root to:
+
+```
+C:\...\Counter-Strike Global Offensive\game\csgo\cfg\
+```
+
+### 2. Edit the IP
+
+Open the file and replace `192.168.X.X` with the **LAN IP of the machine running Mumble-Butler**:
+
+```
+"uri" "http://192.168.X.X:9100/"
+```
+
+### 3. Launch CS2
+
+CS2 auto-loads all `gamestate_integration_*.cfg` files on startup. No launch options needed.
+
+> **Note:** `allplayers_*` stats (all players' health, money, weapons) are only available when **spectating or watching GOTV**. In a live match CS2 provides only your own player state (anti-cheat restriction).
+
+### What the bot announces
+
+| Event | Announcement |
+|---|---|
+| Kill(s) detected | LLM commentary scaled to kill count — single, double, triple, quad, ACE |
+| Round over | Economic debrief: winner, score, per-player eco status and K/D/A |
+| Bomb planted | *"Bomb planted. Tick tock."* |
+| Half-time | *"Half time. Switch sides."* |
+| Game over | *"Game over. Good game everyone."* |
+
+---
+
+## Text Chat Commands
+
+Type these directly in the Mumble channel:
+
+| Command | Description |
+|---|---|
+| `?help` | List all commands |
+| `?status` | System health (LLM, STT, TTS, uptime) |
+| `?listen` | Toggle voice listening on/off |
+| `?forget` | Wipe conversation memory |
+| `?memory` | Toggle memory on/off |
+| `?voice <name>` | Change TTS voice (`heart`, `bella`, `nicole`, `michael`, `emma`, `george`, `alpha`, `siwis`, `sara`) |
+| `?say <text>` | Make the bot speak arbitrary text |
+| `?recommend <vibe>` | AI music recommendation |
+| `?prompt <text>` | Set a custom system prompt on the fly |
+| `?prompt reset` | Restore default system prompt |
+| `?undo` | Forget the last exchange from memory |
+| `?play <query>` | Queue a YouTube track |
+| `?now` | Show now playing |
+| `?queue` | Show playback queue |
+| `?skip` | Skip current track |
+| `?stop` | Stop playback |
+| `?pause` / `?resume` | Pause / resume |
+| `?volume <0–100>` | Set volume |
+| `?repeat <n>` | Repeat n times |
+| `?mode <mode>` | Set playback mode |
+| `?clear` | Clear the queue |
+| `?ping` | Pong! |
+
+---
+
+## Personalities
+
+On joining the bot's channel, each user is randomly assigned one of five personas. The bot uses that persona's voice and system prompt for all responses to that user.
+
+| Persona | Voice | Character |
+|---|---|---|
+| The Toxic Diva | Bella | Vain, judgmental, considers herself superior |
+| The Depressed Android | Michael | Marvin-like, finds everything pointless |
+| The Drill Sergeant | George | Aggressive, calls you maggot, demands results |
+| The Space Cadet | Emma | Cosmic vibes, easily distracted, very chill |
+| The Victorian Gossip | Heart | Dramatic whispers, obsessed with scandal |
+
+---
+
+## Available TTS Voices
+
+| Key | Voice ID | Character |
+|---|---|---|
+| `heart` | `af_heart` | Warm, feminine |
+| `bella` | `af_bella` | Diva |
+| `nicole` | `af_nicole` | Neutral feminine |
+| `michael` | `am_michael` | Default male |
+| `emma` | `bf_emma` | British feminine |
+| `george` | `bm_george` | British male |
+| `alpha` | `jf_alpha` | Japanese feminine |
+| `siwis` | `ff_siwis` | French feminine |
+| `sara` | `if_sara` | Italian feminine |
+
+---
+
+## HTTP API Reference
+
+### LLM API (`http://localhost:8080`)
+
+**Query the LLM:**
 ```bash
-curl -X POST http://127.0.0.1:8080/query \
+curl -X POST http://localhost:8080/query \
   -H "Content-Type: application/json" \
-  -d '{"prompt":"Give me a short summary of Mumble Butler","max_tokens":120}'
+  -d '{"prompt": "What is the capital of Finland?", "max_tokens": 200}'
 ```
 
-Health check:
-
+**Health check:**
 ```bash
-curl http://127.0.0.1:8080/health
+curl http://localhost:8080/health
 ```
 
-Voice transcription example request (`pcm_base64` must be 48kHz mono 16-bit PCM bytes):
-
+**Reset API session memory:**
 ```bash
-curl -X POST http://127.0.0.1:8081/transcribe \
+curl -X POST http://localhost:8080/reset_memory
+```
+
+### Voice API (`http://localhost:8081`)
+
+**Transcribe raw 16-bit PCM audio (base64 encoded):**
+```bash
+curl -X POST http://localhost:8081/transcribe \
   -H "Content-Type: application/json" \
-  -d '{"pcm_base64":"<base64-encoded-raw-pcm>"}'
+  -d '{"pcm_base64": "<base64_encoded_pcm>"}'
+```
+
+**Health check:**
+```bash
+curl http://localhost:8081/health
 ```
 
 ---
 
-## ⚙️ Configuration Reference
+## License
 
-| Setting            | Description                             | Default                 |
-|--------------------|-----------------------------------------|-------------------------|
-| `SERVER_IP`        | Mumble server address                   | `"127.0.0.1"`         |
-| `SERVER_PORT`      | Mumble server port                      | `64738`                |
-| `BOT_USERNAME`     | Username used by the bot                | `"Obama"`             |
-| `PASSWORD`         | Server password (if any)                | `"password"`          |
-| `TARGET_CHANNEL`   | Channel to join                         | `"General"`           |
-| `ACTIVATION_KEYWORD` | Word that activates the bot            | `"obama"`             |
-| `SHUTUP_KEYWORDS`  | Phrases that silence the bot            | `["shut up", ...]`   |
-| `SYSTEM_PROMPT`    | Bot system prompt (short responses)     | *(see config.py)*    |
-| `API_SYSTEM_PROMPT`| API system prompt (detailed responses)  | *(see config.py)*    |
-| `LLM_MODEL_PATH`   | Path to local GGUF model                | `"models/..."`        |
-
----
-
-## 📐 Architecture Overview
-
-```mermaid
-graph LR
-    User[User (Voice)] -->|Audio| Butler[Mumble Butler]
-    Butler -->|STT / NLU| LLM
-    Butler -->|TTS| User
-    Butler -->|Botamusique Commands| MumbleServer
-```
-
----
-
-## 📁 Project Layout
-
-```
-.
-├── bot.py
-├── config.py
-├── main.py
-├── utils.py
-├── handlers/
-├── models/
-└── modules/
-```
-
----
-
-## 🤝 Contributing
-
-Contributions, enhancements, and bug reports are very welcome. Please open an issue or submit a pull request.
-
-## 📬 Support
-
-For questions or assistance, use GitHub Discussions or open an issue in the repository.
-
----
-
-## 🛡️ License
-
-This project is licensed under the [MIT License](LICENSE).
+MIT
