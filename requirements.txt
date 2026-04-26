@@ -3,3 +3,4 @@ faster-whisper
 llama-cpp-python
 kokoro
 numpy
+python-dotenv

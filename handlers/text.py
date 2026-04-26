@@ -28,8 +28,23 @@ class TextHandler:
         # --- Command Routing ---
 
         if cmd == config.TEXT_TRIGGERS['HELP']:
-            cmds = ", ".join(config.TEXT_TRIGGERS.values())
-            self.bot.send_chat(f"Commands: {cmds}, ?voice [name]")
+            triggers = list(config.TEXT_TRIGGERS.values())
+            # Add dynamic voice command example
+            triggers.append("?voice [name]")
+            triggers.append("?play [query]")
+            triggers.append("?volume [0-100]")
+            
+            help_text = "<b>Available Commands:</b><br/>" + ", ".join(triggers)
+            help_text += "<br/><i>Use ?status to check system health.</i>"
+            self.bot.send_chat(help_text)
+
+        elif cmd == config.TEXT_TRIGGERS['STATUS']:
+            status = self.bot.get_status()
+            status_text = "<b>System Status:</b><br/>"
+            for key, val in status.items():
+                color = "green" if val in ["Connected", "Online", "Ready", "ON"] else "red"
+                status_text += f"{key}: <span style='color:{color}'>{val}</span><br/>"
+            self.bot.send_chat(status_text)
 
         elif cmd == config.TEXT_TRIGGERS['LISTEN']:
             self.bot.listening_enabled = not self.bot.listening_enabled
