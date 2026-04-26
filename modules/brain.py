@@ -14,9 +14,11 @@ class Brain:
         self.llm = None
         self.lock = threading.Lock()
         self.history = []
+        self.api_history = []
 
         # Initialize memory state from config (defaults to False if not set)
         self.memory_enabled = getattr(config, 'MEMORY_ENABLED', False)
+        self.api_memory_enabled = getattr(config, 'LLM_API_MEMORY_ENABLED', False)
 
         if LLM_AVAILABLE:
             try:
@@ -37,7 +39,11 @@ class Brain:
                 self.history = [] # Optional: clear history when disabling?
             return self.memory_enabled
 
-    def generate_response(self, user_prompt: str, max_tokens=650) -> str:
+    def reset_api_memory(self):
+        with self.lock:
+            self.api_history = []
+
+    def generate_response(self, user_prompt: str, max_tokens=120) -> str:
         if not self.llm: return "My brain is offline."
 
         now = datetime.now().strftime('%H:%M')
@@ -86,30 +92,49 @@ class Brain:
         with self.lock:
             self.history = []
 
-    def generate_api_response(self, user_prompt: str, max_tokens=650) -> str:
-        """Generate a long-form response intended for the HTTP API."""
-        if not self.llm:
-            return "My brain is offline."
+    def generate_api_response(self, user_prompt: str, max_tokens=200) -> str:
+            """Generate a long-form response intended for the HTTP API."""
+            if not self.llm:
+                return "My brain is offline."
 
-        now = datetime.now().strftime('%H:%M')
-        api_system = getattr(config, 'API_SYSTEM_PROMPT', config.SYSTEM_PROMPT)
-        full_system = f"{api_system}\nContext: It is {now}."
+            now = datetime.now().strftime('%H:%M')
+            api_system = getattr(config, 'API_SYSTEM_PROMPT', config.SYSTEM_PROMPT)
+            full_system = f"{api_system}\nContext: It is {now}."
 
-        prompt = (
-            f"<|im_start|>system\n{full_system}<|im_end|>\n"
-            f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
-        )
+            # 1. Build API history string
+            history_str = ""
+            if self.api_memory_enabled:
+                with self.lock:
+                    for msg in self.api_history:
+                        history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
 
-        try:
-            with self.lock:
-                output = self.llm(prompt, max_tokens=max_tokens, stop=["<|im_end|>", "<|im_start|>"], echo=False)
+            prompt = (
+                f"<|im_start|>system\n{full_system}<|im_end|>\n"
+                f"{history_str}"
+                f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+                f"<|im_start|>assistant\n"
+            )
 
-            text = output['choices'][0]['text']
-            text = text.replace("<|im_start|>", "").replace("<|im_end|>", "")
-            return text.strip().replace('"', '').replace("Obama:", "")
-        except Exception as e:
-            return f"Thinking error: {e}"
+            try:
+                with self.lock:
+                    output = self.llm(prompt, max_tokens=max_tokens, stop=["<|im_end|>", "<|im_start|>"], echo=False)
+
+                text = output['choices'][0]['text']
+                text = text.replace("<|im_start|>", "").replace("<|im_end|>", "")
+                response = text.strip().replace('"', '').replace("Obama:", "")
+
+                # 2. Update API history
+                if self.api_memory_enabled:
+                    with self.lock:
+                        self.api_history.append({"role": "user", "content": user_prompt})
+                        self.api_history.append({"role": "assistant", "content": response})
+                        # Keep API history slightly shorter (10 messages) to account for longer max_tokens
+                        if len(self.api_history) > 10:
+                            self.api_history = self.api_history[-10:]
+
+                return response
+            except Exception as e:
+                return f"Thinking error: {e}"
 
     def recommend_song(self, description):
             if not self.llm: return None
