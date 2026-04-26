@@ -89,7 +89,9 @@ VOICE_TRIGGERS = {
     'REPEAT': ["repeat"],
     'MODE': ["mode"],
     'REMIND': ["remind"],
-    'JELLYFIN_RANDOM': ["jellyfin", "jelly"]
+    'JELLYFIN_RANDOM': ["jellyfin", "jelly"],
+    'STATUS': ["status"],
+    'PING': ["ping", "are you there"]
 }
 
 # --- BOTAMUSIQUE COMMANDS ---
@@ -105,7 +107,8 @@ MUMBLE_COMMANDS = {
     'MODE': "!mode",
     'NOW_PLAYING': "!np",
     'NOW_PLAYING_INFO': "!np -v",
-    'QUEUE': "!queue"
+    'QUEUE': "!queue",
+    'CLEAR': "!clear"
 }
 
 # --- TEXT CHAT TRIGGERS ---

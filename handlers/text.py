@@ -33,6 +33,10 @@ class TextHandler:
             triggers.append("?voice [name]")
             triggers.append("?play [query]")
             triggers.append("?volume [0-100]")
+            triggers.append("?ping")
+            triggers.append("?clear")
+            triggers.append("?prompt [text]")
+            triggers.append("?undo")
             
             help_text = "<b>Available Commands:</b><br/>" + ", ".join(triggers)
             help_text += "<br/><i>Use ?status to check system health.</i>"
@@ -78,6 +82,27 @@ class TextHandler:
                 self.bot.send_chat(f"Queued: {song}")
                 self.bot.play(song)
 
+        elif cmd == "?ping":
+            self.bot.send_chat("Pong!")
+
+        elif cmd == "?undo":
+            if self.bot.brain.undo_last_memory():
+                self.bot.send_chat("Last interaction forgotten.")
+            else:
+                self.bot.send_chat("No memory to undo.")
+
+        elif cmd == "?prompt":
+            if arg:
+                if arg.lower() == "reset":
+                    self.bot.brain.dynamic_prompt = None
+                    self.bot.send_chat("System prompt reset to default.")
+                else:
+                    self.bot.brain.dynamic_prompt = arg
+                    self.bot.send_chat("System prompt updated dynamically.")
+            else:
+                current_prompt = self.bot.brain.dynamic_prompt or "Default"
+                self.bot.send_chat(f"Current dynamic prompt: {current_prompt}. Use '?prompt reset' to restore default.")
+
         # --- music commands forwarded to botamusique ---
         elif cmd == "?play":
             if arg:
@@ -88,6 +113,8 @@ class TextHandler:
             self.bot.request_queue()
         elif cmd == "?skip":
             self.bot.skip()
+        elif cmd == "?clear":
+            self.bot.clear_queue()
         elif cmd == "?stop":
             self.bot.stop_music()
         elif cmd == "?pause":

@@ -59,6 +59,7 @@ class MadnessBot:
         self.my_channel_id = None
         self.running = True
         self.user_personalities = {} # user_name -> personality_key
+        self.start_time = time.time()
 
         # Concurrency
         self.loop = asyncio.new_event_loop()
@@ -360,6 +361,7 @@ class MadnessBot:
     def set_mode(self, mode): return self._send_music_command("MODE", mode)
     def request_now_playing(self): return self._send_music_command("NOW_PLAYING")
     def request_queue(self): return self._send_music_command("QUEUE")
+    def clear_queue(self): return self._send_music_command("CLEAR")
 
     def on_sound_received(self, user, sound_chunk):
         if not self.listening_enabled or not user: return
@@ -383,8 +385,14 @@ class MadnessBot:
 
     def get_status(self):
         """Returns a status report of the bot's components."""
+        uptime_seconds = int(time.time() - self.start_time)
+        hours, remainder = divmod(uptime_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        uptime_str = f"{hours}h {minutes}m {seconds}s"
+
         status = {
             "Mumble": "Connected" if self.mumble and self.mumble.is_alive() else "Disconnected",
+            "Uptime": uptime_str,
             "LLM": "Online" if self.brain.llm else "Offline",
             "STT": "Ready" if self.ear else "Error",
             "TTS": "Ready" if self.voice else "Error",

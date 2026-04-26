@@ -21,6 +21,7 @@ class Brain:
         # Initialize memory state from config (defaults to False if not set)
         self.memory_enabled = getattr(config, 'MEMORY_ENABLED', False)
         self.api_memory_enabled = getattr(config, 'LLM_API_MEMORY_ENABLED', False)
+        self.dynamic_prompt = None
 
         if LLM_AVAILABLE:
             try:
@@ -49,7 +50,7 @@ class Brain:
         if not self.llm: return "My brain is offline."
 
         now = datetime.now().strftime('%H:%M')
-        base_system = personality_prompt or config.SYSTEM_PROMPT
+        base_system = self.dynamic_prompt or personality_prompt or config.SYSTEM_PROMPT
         full_system = f"{base_system}\nContext: It is {now}."
 
         history_str = ""
@@ -94,6 +95,18 @@ class Brain:
     def reset_memory(self):
         with self.lock:
             self.history = []
+
+    def undo_last_memory(self):
+        """Removes the last interaction (user + assistant) from memory."""
+        with self.lock:
+            if len(self.history) >= 2:
+                # Remove last two messages (user and assistant)
+                self.history = self.history[:-2]
+                return True
+            elif len(self.history) == 1:
+                self.history = []
+                return True
+            return False
 
     def generate_api_response(self, user_prompt: str, max_tokens=200) -> str:
             """Generate a long-form response intended for the HTTP API."""

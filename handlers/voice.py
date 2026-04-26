@@ -148,6 +148,18 @@ class VoiceHandler:
                 self.bot.say_async("Try saying remind me in 10 minutes about something.", user=user)
             return True
 
+        # 13. Status
+        if any(w in content for w in config.VOICE_TRIGGERS.get('STATUS', [])):
+            status = self.bot.get_status()
+            summary = f"I am connected with an uptime of {status['Uptime']}. The LLM is {status['LLM']}. Listening is {status['Listening']}."
+            self.bot.say_async(summary, user=user)
+            return True
+
+        # 14. Ping
+        if any(w in content for w in config.VOICE_TRIGGERS.get('PING', [])):
+            self.bot.say_async("Pong! I am here.", user=user)
+            return True
+
         return False
 
     def _parse_reminder(self, content):
