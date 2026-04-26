@@ -19,13 +19,26 @@ class _LLMRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        brain = _brain
-        if self.path == "/health":
-            self._send_json(200, {"status": "ok", "llm_loaded": bool(brain and brain.llm is not None)})
-            return
-        self._send_json(404, {"error": "Not found"})
+            brain = _brain
+            if self.path == "/health":
+                self._send_json(200, {
+                    "status": "ok",
+                    "llm_loaded": bool(brain and brain.llm is not None),
+                    "api_memory_enabled": getattr(config, 'LLM_API_MEMORY_ENABLED', False) # <-- Added info
+                })
+                return
+            self._send_json(404, {"error": "Not found"})
 
     def do_POST(self):
+
+        if self.path == "/reset_memory":
+            if _brain:
+                _brain.reset_api_memory()
+                self._send_json(200, {"status": "ok", "message": "API memory reset successfully"})
+            else:
+                self._send_json(503, {"error": "LLM is not loaded"})
+            return
+
         if self.path != "/query":
             self._send_json(404, {"error": "Not found"})
             return
