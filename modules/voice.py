@@ -13,13 +13,14 @@ class Voice:
         self.pipeline = KPipeline(lang_code='a', device=device)
         self.current_voice_id = config.KOKORO_VOICE_ID
 
-    def generate_pcm(self, text: str):
+    def generate_pcm(self, text: str, voice_id: str = None):
         """Generates 48khz PCM bytes from text."""
         try:
+            target_voice = voice_id or self.current_voice_id
             # Kokoro generates at 24khz
             generator = self.pipeline(
                 text,
-                voice=self.current_voice_id,
+                voice=target_voice,
                 speed=config.KOKORO_SPEED,
                 split_pattern=r'\n+'
             )

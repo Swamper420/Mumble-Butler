@@ -1,5 +1,6 @@
 import re
 import config
+from personalities import PERSONALITIES
 
 
 class VoiceHandler:
@@ -36,22 +37,29 @@ class VoiceHandler:
             self.bot.mumble.sound_output.add_sound(self.bot.chime_pcm)
 
         # 3. Process Logic
-        handled = self._match_command(content)
+        handled = self._match_command(user, content)
 
         if not handled:
             # If no command matched, let the LLM answer
-            response = self.bot.brain.generate_response(f"User {user} says: {content}")
-            self.bot.say_async(response)
+            personality_prompt = None
+            if user in self.bot.user_personalities:
+                p_key = self.bot.user_personalities[user]
+                personality_prompt = PERSONALITIES[p_key]['prompt']
+
+            response = self.bot.brain.generate_response(
+                f"User {user} says: {content}",
+                personality_prompt=personality_prompt
+            )
+            self.bot.say_async(response, user=user)
 
         return True
 
-    def _match_command(self, content):
+    def _match_command(self, user, content):
         """Matches content against config triggers."""
 
-        # 1. Forget
         if any(w in content for w in config.VOICE_TRIGGERS['FORGET']):
             self.bot.brain.reset_memory()
-            self.bot.say_async("Memory wiped.")
+            self.bot.say_async("Memory wiped.", user=user)
             return True
 
         # 2. Volume
@@ -69,7 +77,7 @@ class VoiceHandler:
                     target = "one-shot" if m in ["oneshot", "one shot"] else m
                     self.bot.set_mode(target)
                     return True
-            self.bot.say_async("Available modes are: one-shot, autoplay, repeat, and random.")
+            self.bot.say_async("Available modes are: one-shot, autoplay, repeat, and random.", user=user)
             return True
 
         # 4. Recommend
@@ -79,7 +87,7 @@ class VoiceHandler:
                 desc = desc.replace(t, "")
             song = self.bot.brain.recommend_song(desc.strip() or "random music", chat_context=self.bot.recent_transcripts)
             if song:
-                self.bot.say_async(f"Queued {song}")
+                self.bot.say_async(f"Queued {song}", user=user)
                 self.bot.play(song)
             return True
 
@@ -95,7 +103,7 @@ class VoiceHandler:
         if any(w in content for w in config.VOICE_TRIGGERS['PLAY_MUSIC']):
             rec = self.bot.brain.recommend_song("random music", chat_context=self.bot.recent_transcripts)
             if rec:
-                self.bot.say_async(f"Queued {rec}")
+                self.bot.say_async(f"Queued {rec}", user=user)
                 self.bot.play(rec)
             return True
 
@@ -135,9 +143,9 @@ class VoiceHandler:
             if reminder:
                 seconds, time_text, message = reminder
                 self.bot.schedule_reminder(seconds, message)
-                self.bot.say_async(f"I will remind you in {time_text}.")
+                self.bot.say_async(f"I will remind you in {time_text}.", user=user)
             else:
-                self.bot.say_async("Try saying remind me in 10 minutes about something.")
+                self.bot.say_async("Try saying remind me in 10 minutes about something.", user=user)
             return True
 
         return False

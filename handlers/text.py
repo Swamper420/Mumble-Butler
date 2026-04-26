@@ -70,7 +70,7 @@ class TextHandler:
 
         elif cmd == config.TEXT_TRIGGERS['SAY']:
             if arg:
-                self.bot.say_async(arg)
+                self.bot.say_async(arg, user=sender['name'])
 
         elif cmd == config.TEXT_TRIGGERS['RECOMMEND']:
             song = self.bot.brain.recommend_song(arg or "random music", chat_context=self.bot.recent_transcripts)

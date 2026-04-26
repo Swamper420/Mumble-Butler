@@ -25,6 +25,10 @@ from modules.voice_api import create_voice_api_server
 from handlers.text import TextHandler
 from handlers.voice import VoiceHandler
 
+# Personalities
+from personalities import PERSONALITIES
+import random
+
 class MadnessBot:
     def __init__(self):
         # Initialize logging
@@ -54,6 +58,7 @@ class MadnessBot:
         self.mumble = None
         self.my_channel_id = None
         self.running = True
+        self.user_personalities = {} # user_name -> personality_key
 
         # Concurrency
         self.loop = asyncio.new_event_loop()
@@ -219,12 +224,18 @@ class MadnessBot:
     async def tts_worker(self):
         """Consumes text from queue and generates speech."""
         while True:
-            speech_generation, text = await self.queue.get()
+            speech_generation, text, user_name = await self.queue.get()
             if self.mumble and self.mumble.sound_output:
+                voice_id = None
+                if user_name and user_name in self.user_personalities:
+                    p_key = self.user_personalities[user_name]
+                    voice_id = PERSONALITIES[p_key]['voice_id']
+
                 pcm_data = await self.loop.run_in_executor(
                     self.executor,
                     self.voice.generate_pcm,
-                    text
+                    text,
+                    voice_id
                 )
                 if pcm_data and speech_generation == self.speech_generation:
                     try: self.mumble.sound_output.add_sound(pcm_data)
@@ -309,9 +320,9 @@ class MadnessBot:
         await asyncio.sleep(seconds)
         self.say_async(f"Reminder: {message}")
 
-    def say_async(self, text):
+    def say_async(self, text, user=None):
         speech_generation = self.speech_generation
-        self.loop.call_soon_threadsafe(self.queue.put_nowait, (speech_generation, text))
+        self.loop.call_soon_threadsafe(self.queue.put_nowait, (speech_generation, text, user))
 
     def stop_speaking(self):
         self.speech_generation += 1
@@ -361,7 +372,14 @@ class MadnessBot:
         if name == config.BOT_USERNAME or name in config.IGNORED_USERS: return
         new_ch = mods['channel_id']
         if new_ch == self.my_channel_id:
-             self.say_async(f"Welcome {name}")
+             # Assign a random personality if not already assigned
+             if name not in self.user_personalities:
+                 p_key = random.choice(list(PERSONALITIES.keys()))
+                 self.user_personalities[name] = p_key
+                 p_name = PERSONALITIES[p_key]['name']
+                 self.logger.info(f"🎭 Assigned personality '{p_name}' to {name}")
+             
+             self.say_async(f"Welcome {name}", user=name)
 
     def get_status(self):
         """Returns a status report of the bot's components."""

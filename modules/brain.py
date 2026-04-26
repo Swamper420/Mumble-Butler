@@ -45,11 +45,12 @@ class Brain:
         with self.lock:
             self.api_history = []
 
-    def generate_response(self, user_prompt: str, max_tokens=120) -> str:
+    def generate_response(self, user_prompt: str, max_tokens=120, personality_prompt: str = None) -> str:
         if not self.llm: return "My brain is offline."
 
         now = datetime.now().strftime('%H:%M')
-        full_system = f"{config.SYSTEM_PROMPT}\nContext: It is {now}."
+        base_system = personality_prompt or config.SYSTEM_PROMPT
+        full_system = f"{base_system}\nContext: It is {now}."
 
         history_str = ""
         # Only include history if memory is enabled
