@@ -40,12 +40,10 @@ class MusicRecommender:
     def get_recommendation(self, seeds):
         """
         Takes a list of seeds (artists, genres, or keywords) and returns a 'Artist - Title' string.
+        Seeds should be provided in priority order.
         """
         if not seeds:
             return None
-
-        # Randomly shuffle seeds to ensure variety
-        random.shuffle(seeds)
 
         for seed in seeds:
             # Try iTunes Search API

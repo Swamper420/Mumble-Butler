@@ -156,16 +156,18 @@ class Brain:
             context_str = "Recent chat vibe: " + " | ".join([f"{t['user']}: {t['text']}" for t in recent])
 
         # 2. Generate Seeds
-        # We ask for a list of diverse artists/genres/moods
+        # We ask for a list of seeds. We emphasize sticking to the user's request if it's specific.
         prompt = (
             f"<|im_start|>system\n"
-            f"You are a master music curator. Based on the user's request and the room vibe, "
-            f"generate a diverse list of 5 search terms (specific artists, sub-genres, or moods). "
-            f"Output ONLY the terms separated by commas. No other text.\n<|im_end|>\n"
+            f"You are a master music curator. If the user asks for a specific artist, genre, or vibe, "
+            f"you MUST prioritize it. Generate a list of 5 search terms. "
+            f"If the request is specific (e.g. 'Play Queen'), the terms must be that artist and 4 very similar ones. "
+            f"If the request is vague, be more creative. "
+            f"Output ONLY the terms separated by commas.\n<|im_end|>\n"
             f"<|im_start|>user\n"
             f"Context: {context_str}\n"
             f"User request: {description}\n"
-            f"Give me 5 diverse music seeds.\n<|im_end|>\n"
+            f"Give me 5 music seeds.\n<|im_end|>\n"
             f"<|im_start|>assistant\n"
         )
 
@@ -176,17 +178,23 @@ class Brain:
                     max_tokens=60,
                     stop=["<|im_end|>", "\n"],
                     echo=False,
-                    temperature=0.8
+                    temperature=0.7
                 )
             
             seed_text = output['choices'][0]['text'].strip()
-            seeds = [s.strip() for s in seed_text.split(',') if s.strip()]
+            llm_seeds = [s.strip() for s in seed_text.split(',') if s.strip()]
             
-            # Add the original description as a fallback seed
+            # Final seed list: [User's original request] + [LLM's similar/diverse seeds]
+            seeds = []
             if description and description != "random music":
                 seeds.append(description)
+            
+            # Add LLM seeds, avoiding duplicates
+            for s in llm_seeds:
+                if s.lower() not in [x.lower() for x in seeds]:
+                    seeds.append(s)
 
-            print(f"🎵 Generated seeds: {seeds}")
+            print(f"🎵 Final prioritized seeds: {seeds}")
 
             # 3. Discover
             result = self.recommender.get_recommendation(seeds)
