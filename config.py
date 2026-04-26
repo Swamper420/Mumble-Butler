@@ -131,3 +131,10 @@ POLL_RATE = float(os.getenv("POLL_RATE", "0.1"))
 # --- RECOMMENDATION SYSTEM ---
 MUSIC_HISTORY_FILE = os.getenv("MUSIC_HISTORY_FILE", "data/music_history.json")
 RECOMMENDER_MAX_HISTORY = int(os.getenv("RECOMMENDER_MAX_HISTORY", "50"))
+
+# --- CS2 GAME STATE INTEGRATION ---
+CS2_GSI_ENABLED = os.getenv("CS2_GSI_ENABLED", "True").lower() == "true"
+CS2_GSI_HOST = os.getenv("CS2_GSI_HOST", "0.0.0.0")
+CS2_GSI_PORT = int(os.getenv("CS2_GSI_PORT", "9100"))
+# Seconds to wait after a kill before flushing the multi-kill buffer
+CS2_KILL_BUFFER_SECONDS = float(os.getenv("CS2_KILL_BUFFER_SECONDS", "3.0"))

@@ -261,3 +261,121 @@ class Brain:
         except Exception as e:
             print(f"Report generation error: {e}")
             return f"It is {now}. I am unable to assess the situation due to a processing error."
+
+    def generate_kill_commentary(self, kills: list) -> str:
+        """
+        Generates short, entertaining CS2 kill-feed commentary.
+        `kills` is a list of kill-event dicts produced by CS2GSI.
+        Handles single kills through aces in one call.
+        """
+        if not self.llm:
+            return ""
+
+        count = len(kills)
+        # Build a readable summary of what happened
+        lines = []
+        for k in kills:
+            killer = k.get('killer', 'Someone')
+            victim = k.get('victim') or ''
+            weapon = k.get('weapon', 'their weapon')
+            hs = k.get('headshot', False)
+            victim_part = f" killing {victim}" if victim else ""
+            hs_part = " (headshot)" if hs else ""
+            lines.append(f"{killer} got a kill with {weapon}{victim_part}{hs_part}")
+
+        kill_text = "\n".join(lines)
+
+        multi_label = {
+            1: "a kill",
+            2: "a double kill",
+            3: "a triple kill",
+            4: "a quadruple kill",
+        }.get(count, "an ACE" if count >= 5 else f"{count} kills")
+
+        prompt = (
+            f"<|im_start|>system\n"
+            f"{config.SYSTEM_PROMPT} "
+            f"You are watching a CS2 match and reacting to the kill feed. "
+            f"Be brief (1-2 sentences), entertaining, and in-character. "
+            f"React proportionally: mild for a single kill, increasingly excited for multi-kills and aces.\n"
+            f"<|im_end|>\n"
+            f"<|im_start|>user\n"
+            f"The following just happened — {multi_label}:\n{kill_text}\n"
+            f"Give a short live commentary reaction.\n"
+            f"<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
+
+        try:
+            with self.lock:
+                output = self.llm(
+                    prompt,
+                    max_tokens=80,
+                    stop=["<|im_end|>", "<|im_start|>"],
+                    echo=False,
+                    temperature=0.85,
+                )
+            text = output['choices'][0]['text'].strip()
+            return text.replace('"', '').replace("Obama:", "").strip()
+        except Exception as e:
+            print(f"Kill commentary error: {e}")
+            return ""
+
+    def generate_round_report(self, report: dict) -> str:
+        """
+        Generates an end-of-round economic and performance report.
+        `report` is the dict produced by CS2GSI._fire_round_end.
+        """
+        if not self.llm:
+            return ""
+
+        win_team = report.get('win_team', 'unknown')
+        condition = report.get('win_condition', '')
+        ct_score = report.get('ct_score', 0)
+        t_score = report.get('t_score', 0)
+        map_name = report.get('map', 'unknown')
+        round_num = report.get('round_number', 0)
+        players = report.get('players', [])
+
+        # Build compact player table
+        player_lines = []
+        for p in sorted(players, key=lambda x: x.get('kills', 0), reverse=True):
+            name = p.get('name', '?')
+            team = p.get('team', '?')
+            kda = f"{p.get('kills',0)}/{p.get('deaths',0)}/{p.get('assists',0)}"
+            eco = p.get('eco_label', '?')
+            money = p.get('money', 0)
+            player_lines.append(f"  {name} [{team}] KDA:{kda} eco:{eco} ${money:,}")
+
+        player_text = "\n".join(player_lines) if player_lines else "No player data."
+
+        prompt = (
+            f"<|im_start|>system\n"
+            f"{config.SYSTEM_PROMPT} "
+            f"You are providing a post-round CS2 debrief. Be concise (2-3 sentences). "
+            f"Comment on the winning team, the score, and the economy for next round — "
+            f"who can full-buy, who is forced to eco, and any notable performances. Stay in character.\n"
+            f"<|im_end|>\n"
+            f"<|im_start|>user\n"
+            f"Round {round_num} on {map_name} just ended.\n"
+            f"Winner: {win_team} ({condition}). Score: CT {ct_score} — T {t_score}.\n"
+            f"Player stats:\n{player_text}\n"
+            f"Give the round debrief.\n"
+            f"<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
+
+        try:
+            with self.lock:
+                output = self.llm(
+                    prompt,
+                    max_tokens=150,
+                    stop=["<|im_end|>", "<|im_start|>"],
+                    echo=False,
+                    temperature=0.75,
+                )
+            text = output['choices'][0]['text'].strip()
+            return text.replace('"', '').replace("Obama:", "").strip()
+        except Exception as e:
+            print(f"Round report error: {e}")
+            return ""
