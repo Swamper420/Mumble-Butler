@@ -116,10 +116,15 @@ TEXT_TRIGGERS = {
     'FORGET': "?forget",
     'VOICE': "?voice",
     'SAY': "?say",
-    'MEMORY': "?memory"
+    'MEMORY': "?memory",
+    'RECOMMEND': "?recommend"
 }
 
 # --- AUDIO PARAMETERS ---
 SILENCE_THRESHOLD = 0.5
 MIN_AUDIO_LENGTH = 0.3
 POLL_RATE = 0.1
+
+# --- RECOMMENDATION SYSTEM ---
+MUSIC_HISTORY_FILE = "data/music_history.json"
+RECOMMENDER_MAX_HISTORY = 50

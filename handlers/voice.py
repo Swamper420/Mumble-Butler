@@ -77,7 +77,7 @@ class VoiceHandler:
             desc = content
             for t in config.VOICE_TRIGGERS['RECOMMEND']:
                 desc = desc.replace(t, "")
-            song = self.bot.brain.recommend_song(desc.strip() or "random music")
+            song = self.bot.brain.recommend_song(desc.strip() or "random music", chat_context=self.bot.recent_transcripts)
             if song:
                 self.bot.say_async(f"Queued {song}")
                 self.bot.play(song)
@@ -93,7 +93,7 @@ class VoiceHandler:
 
         # 6. Play (Generic Music / "music")
         if any(w in content for w in config.VOICE_TRIGGERS['PLAY_MUSIC']):
-            rec = self.bot.brain.recommend_song("random music")
+            rec = self.bot.brain.recommend_song("random music", chat_context=self.bot.recent_transcripts)
             if rec:
                 self.bot.say_async(f"Queued {rec}")
                 self.bot.play(rec)

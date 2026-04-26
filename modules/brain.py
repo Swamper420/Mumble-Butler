@@ -2,6 +2,7 @@ import threading
 from datetime import datetime
 import random
 import config
+from modules.recommender import MusicRecommender
 
 try:
     from llama_cpp import Llama
@@ -15,6 +16,7 @@ class Brain:
         self.lock = threading.Lock()
         self.history = []
         self.api_history = []
+        self.recommender = MusicRecommender()
 
         # Initialize memory state from config (defaults to False if not set)
         self.memory_enabled = getattr(config, 'MEMORY_ENABLED', False)
@@ -136,49 +138,66 @@ class Brain:
             except Exception as e:
                 return f"Thinking error: {e}"
 
-    def recommend_song(self, description):
-            if not self.llm: return None
+    def recommend_song(self, description, chat_context=None):
+        """
+        Sophisticated recommendation:
+        1. Contextual vibe analysis.
+        2. LLM seed generation.
+        3. External discovery (iTunes).
+        """
+        if not self.llm:
+            return None
 
-            # 1. Define a list of dynamic DJ personas to ensure variety
-            dj_personas = [
-                "You are an underground DJ who loves obscure, underrated gems. Avoid mainstream top 40.",
-                "You are a music historian looking for timeless classics that people often forget.",
-                "You are a trend-setter looking for the absolute freshest, most unique sounds from the last few years.",
-                "You are an eclectic curator who mixes genres unexpectedly. Surprise the user.",
-                "You are a 'crate digger' looking for rare vinyl cuts and b-sides."
-            ]
+        # 1. Prepare Context
+        context_str = ""
+        if chat_context:
+            # Take last 10 transcripts for flavor
+            recent = chat_context[-10:]
+            context_str = "Recent chat vibe: " + " | ".join([f"{t['user']}: {t['text']}" for t in recent])
 
-            # 2. Pick a random persona
-            current_persona = random.choice(dj_personas)
+        # 2. Generate Seeds
+        # We ask for a list of diverse artists/genres/moods
+        prompt = (
+            f"<|im_start|>system\n"
+            f"You are a master music curator. Based on the user's request and the room vibe, "
+            f"generate a diverse list of 5 search terms (specific artists, sub-genres, or moods). "
+            f"Output ONLY the terms separated by commas. No other text.\n<|im_end|>\n"
+            f"<|im_start|>user\n"
+            f"Context: {context_str}\n"
+            f"User request: {description}\n"
+            f"Give me 5 diverse music seeds.\n<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
 
-            # 3. Construct the prompt with positive constraints
-            # We explicitly ask for "Artist - Title" format.
-            prompt = (
-                f"<|im_start|>system\n{current_persona} "
-                f"Your task is to recommend a song based on the user's vibe. "
-                f"Output ONLY ONE search query in the format 'Artist - Title'. Do not output any other text.\n<|im_end|>\n"
-                f"<|im_start|>user\nRecommend a song for this vibe: {description}\n<|im_end|>\n"
-                f"<|im_start|>assistant\n"
-            )
+        try:
+            with self.lock:
+                output = self.llm(
+                    prompt,
+                    max_tokens=60,
+                    stop=["<|im_end|>", "\n"],
+                    echo=False,
+                    temperature=0.8
+                )
+            
+            seed_text = output['choices'][0]['text'].strip()
+            seeds = [s.strip() for s in seed_text.split(',') if s.strip()]
+            
+            # Add the original description as a fallback seed
+            if description and description != "random music":
+                seeds.append(description)
 
-            try:
-                with self.lock:
-                    # 4. Increase temperature to 0.85 (default is usually lower) for more creativity
-                    output = self.llm(
-                        prompt,
-                        max_tokens=90,
-                        stop=["<|im_end|>", "\n"],
-                        echo=False,
-                        temperature=0.90,  # Higher temp = more "unique" / "fresh" choices
-                        top_p=0.95         # Nucleus sampling for quality
-                    )
+            print(f"🎵 Generated seeds: {seeds}")
 
-                result = output['choices'][0]['text'].strip().replace('"', '')
-                print(f"🎵 Recommendation [{current_persona}]: {result}") # Debug log
+            # 3. Discover
+            result = self.recommender.get_recommendation(seeds)
+            if result:
+                print(f"✅ Recommendation: {result}")
                 return result
-            except Exception as e:
-                print(f"Recommendation error: {e}")
-                return None
+            
+            return None
+        except Exception as e:
+            print(f"Recommendation error: {e}")
+            return None
 
 
     # --- NEW METHOD ---

@@ -57,6 +57,12 @@ class TextHandler:
             if arg:
                 self.bot.say_async(arg)
 
+        elif cmd == config.TEXT_TRIGGERS['RECOMMEND']:
+            song = self.bot.brain.recommend_song(arg or "random music", chat_context=self.bot.recent_transcripts)
+            if song:
+                self.bot.send_chat(f"Queued: {song}")
+                self.bot.play(song)
+
         # --- music commands forwarded to botamusique ---
         elif cmd == "?play":
             if arg:
