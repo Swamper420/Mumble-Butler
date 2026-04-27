@@ -79,6 +79,10 @@ class CS2GSI:
         self._prev_map_phase: str = ""
         self._prev_bomb_state: str = ""
 
+        # State tracking
+        self.round_history: list[str] = []
+        self.local_team: str = ""
+
         # Callbacks (set by bot after construction)
         self.on_kill_commentary = None
         self.on_round_end = None
@@ -150,48 +154,42 @@ class CS2GSI:
 
     def _process_kill_feed(self, payload: dict):
         """
-        Detects new kills by comparing allplayers match stats against the
-        previous payload. Buffers kills for KILL_BUFFER_SECONDS, then
-        flushes the whole burst to on_kill_commentary.
+        Detects new kills by checking the local player's match_stats.
+        Buffering kills for KILL_BUFFER_SECONDS, then flushes.
         """
         buffer_secs = getattr(config, "CS2_KILL_BUFFER_SECONDS", 3.0)
 
-        cur_players = payload.get("allplayers", {})
-        prev_players = self.prev_state.get("allplayers", {})
+        player = payload.get("player", {})
+        prev_player = self.prev_state.get("player", {})
 
-        if not cur_players or not prev_players:
+        if not player or not prev_player:
             return
 
-        # Also grab recently_killed added by GSI (not always present)
-        # Fallback: diff kill counts per player
-        for steam_id, cur_data in cur_players.items():
-            prev_data = prev_players.get(steam_id)
-            if not prev_data:
-                continue
+        # Ensure we are tracking the same player (in case of spectator switch)
+        if player.get("steamid") != prev_player.get("steamid"):
+            return
 
-            cur_kills = (cur_data.get("match_stats") or {}).get("kills", 0)
-            prev_kills = (prev_data.get("match_stats") or {}).get("kills", 0)
+        cur_kills = (player.get("match_stats") or {}).get("kills", 0)
+        prev_kills = (prev_player.get("match_stats") or {}).get("kills", 0)
 
-            if cur_kills <= prev_kills:
-                continue
+        if cur_kills <= prev_kills:
+            return
 
-            # Build kill event(s) — typically 1 per update but could be >1
-            delta = cur_kills - prev_kills
-            for _ in range(delta):
-                kill_event = {
-                    "killer": (cur_data.get("name") or steam_id),
-                    "killer_team": cur_data.get("team", ""),
-                    "weapon": self._infer_weapon(cur_data),
-                    "headshot": self._check_headshot(cur_data, prev_data),
-                    "victim": "",   # GSI doesn't give us victim directly from stats
-                    "timestamp": time.time(),
-                }
-                logger.debug(f"🔫 Kill detected: {kill_event['killer']}")
-                with self._kill_lock:
-                    self._kill_buffer.append(kill_event)
+        delta = cur_kills - prev_kills
+        for _ in range(delta):
+            kill_event = {
+                "killer": (player.get("name") or "Local Player"),
+                "killer_team": player.get("team", ""),
+                "weapon": self._infer_weapon(player),
+                "headshot": False,
+                "victim": "",
+                "timestamp": time.time(),
+            }
+            logger.debug(f"🔫 Kill detected: {kill_event['killer']}")
+            with self._kill_lock:
+                self._kill_buffer.append(kill_event)
 
-            # Restart the flush timer every new kill
-            self._reset_kill_timer(buffer_secs)
+        self._reset_kill_timer(buffer_secs)
 
     def _reset_kill_timer(self, buffer_secs: float):
         """Restarts the debounce timer that triggers commentary flush."""
@@ -266,6 +264,12 @@ class CS2GSI:
         win_team = round_data.get("win_team", "")
         win_condition = round_data.get("win_condition", "")
 
+        if win_team:
+            self.round_history.append(win_team)
+
+        player = payload.get("player", {})
+        self.local_team = player.get("team", "")
+
         map_data = payload.get("map") or {}
         ct_score = (map_data.get("team_ct") or {}).get("score", 0)
         t_score = (map_data.get("team_t") or {}).get("score", 0)
@@ -296,6 +300,15 @@ class CS2GSI:
                 "health": state.get("health", 0),
             })
 
+        streak = 0
+        if self.round_history:
+            last_winner = self.round_history[-1]
+            for w in reversed(self.round_history):
+                if w == last_winner:
+                    streak += 1
+                else:
+                    break
+
         report = {
             "win_team": win_team,
             "win_condition": win_condition,
@@ -304,6 +317,10 @@ class CS2GSI:
             "players": player_reports,
             "map": map_data.get("name", "unknown"),
             "round_number": map_data.get("round", 0),
+            "local_team": self.local_team,
+            "round_history": self.round_history,
+            "streak": streak,
+            "streak_team": self.round_history[-1] if self.round_history else ""
         }
 
         try:
@@ -324,6 +341,9 @@ class CS2GSI:
 
         old_phase = self._prev_map_phase
         self._prev_map_phase = phase
+
+        if phase == "warmup" and old_phase != "warmup":
+            self.round_history.clear()
 
         logger.info(f"Map phase: {old_phase} → {phase}")
 

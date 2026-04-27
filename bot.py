@@ -82,6 +82,9 @@ class MadnessBot:
         self.background_tasks = set()
         self.api_servers = []
         self.api_threads = []
+        
+        # CS2 tracking
+        self.cs2_bomb_tasks = set()
 
         # Signal handling for graceful shutdown
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -440,6 +443,7 @@ class MadnessBot:
 
     def _on_cs2_round_end(self, report: dict):
         """Called by CS2GSI when a round ends. Fires end-of-round debrief."""
+        self.loop.call_soon_threadsafe(self._cancel_bomb_tasks)
         def _generate():
             self.logger.info(
                 f"📊 CS2 round end: {report.get('win_team')} wins "
@@ -454,9 +458,46 @@ class MadnessBot:
         """Called when the bomb is planted."""
         site_str = f" on {site}" if site else ""
         self.say_async(f"Bomb planted{site_str}. Tick tock.")
+        
+        # Schedule the chimes. Bomb lasts 40s.
+        # at 25s elapsed (15s left), play 1 beep
+        # at 30s elapsed (10s left), play 2 beeps
+        # at 35s elapsed (5s left), play 3 beeps
+        def _schedule_bomb_chime(delay, count):
+            async def _task():
+                await asyncio.sleep(delay)
+                self._play_chime_pattern(count)
+            task = self.loop.create_task(_task())
+            self.cs2_bomb_tasks.add(task)
+            task.add_done_callback(self.cs2_bomb_tasks.discard)
+
+        self.loop.call_soon_threadsafe(_schedule_bomb_chime, 25, 1)
+        self.loop.call_soon_threadsafe(_schedule_bomb_chime, 30, 2)
+        self.loop.call_soon_threadsafe(_schedule_bomb_chime, 35, 3)
+
+    def _play_chime_pattern(self, count):
+        """Plays the loaded chime PCM directly, multiple times."""
+        if not self.mumble or not self.mumble.sound_output or not self.chime_pcm:
+            return
+            
+        def _play():
+            for _ in range(count):
+                try: 
+                    self.mumble.sound_output.add_sound(self.chime_pcm)
+                    time.sleep(0.3) # short delay between beeps
+                except: pass
+        threading.Thread(target=_play, daemon=True).start()
+
+    def _cancel_bomb_tasks(self):
+        """Cancel pending bomb timers when round ends."""
+        for task in list(self.cs2_bomb_tasks):
+            task.cancel()
+        self.cs2_bomb_tasks.clear()
 
     def _on_cs2_phase_change(self, new_phase: str, old_phase: str):
         """React to major game phase transitions."""
+        if new_phase != "live":
+            self.loop.call_soon_threadsafe(self._cancel_bomb_tasks)
         announcements = {
             "map:halftime": "Half time. Switch sides.",
             "map:gameover":  "Game over. Good game everyone.",

@@ -349,12 +349,31 @@ class Brain:
 
         player_text = "\n".join(player_lines) if player_lines else "No player data."
 
+        local_team = report.get('local_team', '')
+        streak = report.get('streak', 0)
+        streak_team = report.get('streak_team', '')
+
+        # Build dynamic context about how we are doing
+        context_str = ""
+        if local_team:
+            if streak >= 3 and streak_team != local_team:
+                context_str = f"Your team ({local_team}) is losing badly (the enemy {streak_team} is on a {streak} round win streak). Be HIGHLY sarcastic, cynical, and brutally mock your team's terrible performance."
+            elif streak_team == local_team and streak >= 2:
+                context_str = f"Your team ({local_team}) is on a {streak} round win streak! Hype them up enthusiastically!"
+            elif win_team == local_team:
+                context_str = f"Your team ({local_team}) won the round! Hype them up!"
+            else:
+                context_str = f"Your team ({local_team}) lost the round. Give a sarcastic remark about their performance."
+        else:
+            context_str = "Comment on the winner and economy neutrally."
+
         prompt = (
             f"<|im_start|>system\n"
             f"{config.SYSTEM_PROMPT} "
             f"You are providing a post-round CS2 debrief. Be concise (2-3 sentences). "
-            f"Comment on the winning team, the score, and the economy for next round — "
-            f"who can full-buy, who is forced to eco, and any notable performances. Stay in character.\n"
+            f"{context_str}\n"
+            f"Also briefly comment on the overall score and the economy for next round — "
+            f"who can full-buy, who is forced to eco. Stay in character.\n"
             f"<|im_end|>\n"
             f"<|im_start|>user\n"
             f"Round {round_num} on {map_name} just ended.\n"
