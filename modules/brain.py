@@ -38,62 +38,89 @@ class Brain:
                 print(f"❌ LLM Error: {e}")
 
     def _build_prompt(self, system_prompt, user_prompt, history=None):
-        """Constructs a prompt based on the configured format."""
+        """
+        Constructs a prompt based on the configured format.
+        Uses a 'Context-First' architecture to ensure persona dominance.
+        """
         
-        # If thinking is disabled, add a very strong instruction
+        # Directive steering for "no-thinking" performance
         if self.disable_thinking:
-            system_prompt = (
-                f"{system_prompt}\n\n"
-                "CRITICAL: Do NOT use <thought> or <reasoning> blocks. "
-                "Do NOT perform internal reasoning. "
-                "START your response DIRECTLY with the message for the user."
+            steering = (
+                "\n\n[DIRECTIVE: Respond as your persona immediately. "
+                "Bypass internal reasoning. Do not use <thought> tags. "
+                "Start the response directly.]"
             )
+            system_prompt += steering
 
         if self.prompt_format == "gemma":
-            # Standard Gemma 2/4 template
-            prompt = f"<start_of_turn>user\n{system_prompt}\n\n"
+            # Gemma 2/4 Optimized Template
+            prompt = ""
+            
+            # Prepend system context to the very first turn
+            system_header = f"ROLE / CONTEXT:\n{system_prompt}\n\n"
             
             if history:
-                for msg in history:
+                for i, msg in enumerate(history):
                     role = "user" if msg['role'] == "user" else "model"
-                    prompt += f"{msg['content']}<end_of_turn>\n<start_of_turn>{role}\n"
+                    content = msg['content']
+                    # Inject system instructions into the very first turn of the history
+                    if i == 0:
+                        content = system_header + content
+                    prompt += f"<start_of_turn>{role}\n{content}<end_of_turn>\n"
+                
+                # Add current user prompt
+                prompt += f"<start_of_turn>user\n{user_prompt}<end_of_turn>\n<start_of_turn>model\n"
+            else:
+                # Single-turn optimization
+                prompt = f"<start_of_turn>user\n{system_header}{user_prompt}<end_of_turn>\n<start_of_turn>model\n"
             
-            prompt += f"{user_prompt}<end_of_turn>\n<start_of_turn>model\n"
             return prompt, ["<end_of_turn>", "<start_of_turn>", "<thought>", "<reasoning>", "</thought>", "</reasoning>"]
         
         else:
-            # Default ChatML template
-            history_str = ""
+            # ChatML (Qwen/Llama) Optimized Template
+            prompt = f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+            
             if history:
                 for msg in history:
-                    history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
+                    role = msg['role'] # 'user', 'assistant', or 'system'
+                    prompt += f"<|im_start|>{role}\n{msg['content']}<|im_end|>\n"
 
-            prompt = (
-                f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
-                f"{history_str}"
-                f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
-                f"<|im_start|>assistant\n"
-            )
+            prompt += f"<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n"
             return prompt, ["<|im_end|>", "<|im_start|>", "<thought>", "<reasoning>", "</thought>", "</reasoning>"]
 
     def _clean_response(self, text):
-        """Cleans model-specific tags and strips out any thought/reasoning blocks."""
+        """
+        Robust multi-pass sanitizer to strip tags, thought blocks, and role labels.
+        """
         import re
         
-        # 1. Remove entire thought/reasoning blocks and their content
+        # Pass 1: Aggressive Regex for Thought/Reasoning blocks
+        # Handles balanced and unbalanced tags (in case of truncation)
         text = re.sub(r'<(thought|reasoning)>.*?</\1>', '', text, flags=re.DOTALL | re.IGNORECASE)
-        # 2. Remove any stray opening/closing tags if the model got cut off
         text = re.sub(r'<(thought|reasoning)>.*', '', text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r'.*?</(thought|reasoning)>', '', text, flags=re.DOTALL | re.IGNORECASE)
         
-        # 3. Remove model-specific turn tags
-        tags = ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>", "<thought>", "</thought>", "<reasoning>", "</reasoning>"]
+        # Pass 2: Specific turn tag cleanup
+        tags = [
+            "<|im_start|>", "<|im_end|>", 
+            "<start_of_turn>", "<end_of_turn>", 
+            "<thought>", "</thought>", 
+            "<reasoning>", "</reasoning>",
+            "assistant", "model", "user", "system"
+        ]
+        # Only remove tags if they appear as standalone labels at the start
         for tag in tags:
-            text = text.replace(tag, "")
+            text = text.replace(f"{tag}\n", "").replace(tag, "")
         
-        # 4. Final polish
-        text = text.strip().replace('"', '').replace("Obama:", "").replace("Assistant:", "").replace("Model:", "")
-        return text.strip()
+        # Pass 3: Common "Parroting" Prefixes
+        prefixes = ["Obama:", "Assistant:", "Model:", "AI:", "Response:", "Butler:"]
+        for p in prefixes:
+            if text.lower().startswith(p.lower()):
+                text = text[len(p):].strip()
+        
+        # Final polish
+        text = text.strip().replace('"', '')
+        return text
 
     def toggle_memory(self):
         with self.lock:
