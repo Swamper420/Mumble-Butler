@@ -18,14 +18,16 @@ class Brain:
         self.api_history = []
         self.recommender = MusicRecommender()
 
-        # Initialize memory state from config (defaults to False if not set)
+        # Initialize settings from config
         self.memory_enabled = getattr(config, 'MEMORY_ENABLED', False)
         self.api_memory_enabled = getattr(config, 'LLM_API_MEMORY_ENABLED', False)
+        self.prompt_format = getattr(config, 'LLM_PROMPT_FORMAT', 'chatml')
+        self.disable_thinking = getattr(config, 'LLM_DISABLE_THINKING', True)
         self.dynamic_prompt = None
 
         if LLM_AVAILABLE:
             try:
-                print("🧠 Loading LLM...")
+                print(f"🧠 Loading LLM ({config.LLM_MODEL_PATH})...")
                 self.llm = Llama(
                     model_path=config.LLM_MODEL_PATH,
                     n_ctx=config.LLM_CONTEXT_SIZE,
@@ -34,6 +36,55 @@ class Brain:
                 )
             except Exception as e:
                 print(f"❌ LLM Error: {e}")
+
+    def _build_prompt(self, system_prompt, user_prompt, history=None):
+        """Constructs a prompt based on the configured format."""
+        
+        # If thinking is disabled, add a strong instruction to the system prompt
+        if self.disable_thinking:
+            system_prompt = f"{system_prompt}\n\nIMPORTANT: Do NOT use thinking blocks or internal reasoning. Respond directly and concisely."
+
+        if self.prompt_format == "gemma":
+            # Gemma 2/4 template
+            # <start_of_turn>user
+            # {system}\n\n{prompt}<end_of_turn>
+            # <start_of_turn>model
+            
+            prompt = "<start_of_turn>user\n"
+            prompt += f"system\n{system_prompt}\n\n"
+            
+            if history:
+                for msg in history:
+                    role = "user" if msg['role'] == "user" else "model"
+                    prompt += f"{msg['content']}<end_of_turn>\n<start_of_turn>{role}\n"
+            
+            prompt += f"{user_prompt}<end_of_turn>\n<start_of_turn>model\n"
+            return prompt, ["<end_of_turn>", "<start_of_turn>", "<thought>", "<reasoning>"]
+        
+        else:
+            # Default ChatML template
+            history_str = ""
+            if history:
+                for msg in history:
+                    history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
+
+            prompt = (
+                f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+                f"{history_str}"
+                f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+                f"<|im_start|>assistant\n"
+            )
+            return prompt, ["<|im_end|>", "<|im_start|>", "<thought>", "<reasoning>"]
+
+    def _clean_response(self, text):
+        """Cleans model-specific tags and artifacts from the response."""
+        tags = ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>", "<thought>", "</thought>", "<reasoning>", "</reasoning>"]
+        for tag in tags:
+            text = text.replace(tag, "")
+        
+        # Handle cases where model might still try to label the output
+        text = text.strip().replace('"', '').replace("Obama:", "").replace("Assistant:", "").replace("Model:", "")
+        return text.strip()
 
     def toggle_memory(self):
         with self.lock:
@@ -53,33 +104,24 @@ class Brain:
         base_system = self.dynamic_prompt or personality_prompt or config.SYSTEM_PROMPT
         full_system = f"{base_system}\nContext: It is {now}."
 
-        history_str = ""
-        # Only include history if memory is enabled
+        history = None
         if self.memory_enabled:
             with self.lock:
-                for msg in self.history:
-                    history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
+                history = self.history[:]
 
-        prompt = (
-            f"<|im_start|>system\n{full_system}<|im_end|>\n"
-            f"{history_str}"
-            f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
-        )
+        prompt, stop_tokens = self._build_prompt(full_system, user_prompt, history)
 
         try:
             with self.lock:
-                output = self.llm(prompt, max_tokens=max_tokens, stop=["<|im_end|>", "<|im_start|>"], echo=False)
+                output = self.llm(prompt, max_tokens=max_tokens, stop=stop_tokens, echo=False)
 
             text = output['choices'][0]['text']
-            # Clean tags
-            text = text.replace("<|im_start|>", "").replace("<|im_end|>", "")
-            response = text.strip().replace('"', '').replace("Obama:", "")
+            response = self._clean_response(text)
 
             self._update_history(user_prompt, response)
             return response
         except Exception as e:
-            return f"Thinking error: {e}"
+            return f"Brain error: {e}"
 
     def _update_history(self, user, ai):
         # Do not save to history if memory is disabled
@@ -117,40 +159,30 @@ class Brain:
             api_system = getattr(config, 'API_SYSTEM_PROMPT', config.SYSTEM_PROMPT)
             full_system = f"{api_system}\nContext: It is {now}."
 
-            # 1. Build API history string
-            history_str = ""
+            history = None
             if self.api_memory_enabled:
                 with self.lock:
-                    for msg in self.api_history:
-                        history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
+                    history = self.api_history[:]
 
-            prompt = (
-                f"<|im_start|>system\n{full_system}<|im_end|>\n"
-                f"{history_str}"
-                f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
-                f"<|im_start|>assistant\n"
-            )
+            prompt, stop_tokens = self._build_prompt(full_system, user_prompt, history)
 
             try:
                 with self.lock:
-                    output = self.llm(prompt, max_tokens=max_tokens, stop=["<|im_end|>", "<|im_start|>"], echo=False)
+                    output = self.llm(prompt, max_tokens=max_tokens, stop=stop_tokens, echo=False)
 
                 text = output['choices'][0]['text']
-                text = text.replace("<|im_start|>", "").replace("<|im_end|>", "")
-                response = text.strip().replace('"', '').replace("Obama:", "")
+                response = self._clean_response(text)
 
-                # 2. Update API history
                 if self.api_memory_enabled:
                     with self.lock:
                         self.api_history.append({"role": "user", "content": user_prompt})
                         self.api_history.append({"role": "assistant", "content": response})
-                        # Keep API history slightly shorter (10 messages) to account for longer max_tokens
                         if len(self.api_history) > 10:
                             self.api_history = self.api_history[-10:]
 
                 return response
             except Exception as e:
-                return f"Thinking error: {e}"
+                return f"Brain error: {e}"
 
     def recommend_song(self, description, chat_context=None):
         """
@@ -171,26 +203,23 @@ class Brain:
 
         # 2. Generate Seeds
         # We ask for a list of seeds. We emphasize sticking to the user's request if it's specific.
-        prompt = (
-            f"<|im_start|>system\n"
-            f"You are a master music curator. If the user asks for a specific artist, genre, or vibe, "
-            f"you MUST prioritize it. Generate a list of 5 search terms. "
-            f"If the request is specific (e.g. 'Play Queen'), the terms must be that artist and 4 very similar ones. "
-            f"If the request is vague, be more creative. "
-            f"Output ONLY the terms separated by commas.\n<|im_end|>\n"
-            f"<|im_start|>user\n"
-            f"Context: {context_str}\n"
-            f"User request: {description}\n"
-            f"Give me 5 music seeds.\n<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+        system = (
+            "You are a master music curator. If the user asks for a specific artist, genre, or vibe, "
+            "you MUST prioritize it. Generate a list of 5 search terms. "
+            "If the request is specific (e.g. 'Play Queen'), the terms must be that artist and 4 very similar ones. "
+            "If the request is vague, be more creative. "
+            "Output ONLY the terms separated by commas."
         )
+        user = f"Context: {context_str}\nUser request: {description}\nGive me 5 music seeds."
+        
+        prompt, stop_tokens = self._build_prompt(system, user)
 
         try:
             with self.lock:
                 output = self.llm(
                     prompt,
                     max_tokens=60,
-                    stop=["<|im_end|>", "\n"],
+                    stop=stop_tokens + ["\n"],
                     echo=False,
                     temperature=0.7
                 )
@@ -237,27 +266,26 @@ class Brain:
 
         users_text = ", ".join(active_users) if active_users else "No one else is here."
 
-        prompt = (
-            f"<|im_start|>system\n"
+        system = (
             f"{config.SYSTEM_PROMPT} "
             f"It is currently {now}. You are giving a periodic hourly status update to the room. "
             f"Mention the current time, acknowledge who is in the room ({users_text}), "
-            f"and briefly summarize or comment on the vibe based on the last minute of conversation if any.\n"
-            f"Keep it brief (under 4 sentences), witty, and butler-like.\n<|im_end|>\n"
-            f"<|im_start|>user\n"
-            f"Recent conversation:\n{transcript_text}\n\nGive the status update.\n<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+            f"and briefly summarize or comment on the vibe based on the last minute of conversation if any. "
+            f"Keep it brief (under 4 sentences), witty, and butler-like."
         )
+        user = f"Recent conversation:\n{transcript_text}\n\nGive the status update."
+        
+        prompt, stop_tokens = self._build_prompt(system, user)
 
         try:
             with self.lock:
                 output = self.llm(
                     prompt,
                     max_tokens=350,
-                    stop=["<|im_end|>", "\n"],
+                    stop=stop_tokens + ["\n"],
                     echo=False
                 )
-            return output['choices'][0]['text'].strip().replace('"', '')
+            return self._clean_response(output['choices'][0]['text'])
         except Exception as e:
             print(f"Report generation error: {e}")
             return f"It is {now}. I am unable to assess the situation due to a processing error."
@@ -292,31 +320,26 @@ class Brain:
             4: "a quadruple kill",
         }.get(count, "an ACE" if count >= 5 else f"{count} kills")
 
-        prompt = (
-            f"<|im_start|>system\n"
+        system = (
             f"{config.SYSTEM_PROMPT} "
             f"You are watching a CS2 match and reacting to the kill feed. "
             f"Be brief (1-2 sentences), entertaining, and in-character. "
-            f"React proportionally: mild for a single kill, increasingly excited for multi-kills and aces.\n"
-            f"<|im_end|>\n"
-            f"<|im_start|>user\n"
-            f"The following just happened — {multi_label}:\n{kill_text}\n"
-            f"Give a short live commentary reaction.\n"
-            f"<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+            f"React proportionally: mild for a single kill, increasingly excited for multi-kills and aces."
         )
+        user = f"The following just happened — {multi_label}:\n{kill_text}\nGive a short live commentary reaction."
+        
+        prompt, stop_tokens = self._build_prompt(system, user)
 
         try:
             with self.lock:
                 output = self.llm(
                     prompt,
                     max_tokens=80,
-                    stop=["<|im_end|>", "<|im_start|>"],
+                    stop=stop_tokens,
                     echo=False,
                     temperature=0.85,
                 )
-            text = output['choices'][0]['text'].strip()
-            return text.replace('"', '').replace("Obama:", "").strip()
+            return self._clean_response(output['choices'][0]['text'])
         except Exception as e:
             print(f"Kill commentary error: {e}")
             return ""
@@ -367,34 +390,32 @@ class Brain:
         else:
             context_str = "Comment on the winner and economy neutrally."
 
-        prompt = (
-            f"<|im_start|>system\n"
+        system = (
             f"{config.SYSTEM_PROMPT} "
             f"You are providing a post-round CS2 debrief. Be concise (2-3 sentences). "
-            f"{context_str}\n"
+            f"{context_str} "
             f"Also briefly comment on the overall score and the economy for next round — "
-            f"who can full-buy, who is forced to eco. Stay in character.\n"
-            f"<|im_end|>\n"
-            f"<|im_start|>user\n"
+            f"who can full-buy, who is forced to eco. Stay in character."
+        )
+        user = (
             f"Round {round_num} on {map_name} just ended.\n"
             f"Winner: {win_team} ({condition}). Score: CT {ct_score} — T {t_score}.\n"
             f"Player stats:\n{player_text}\n"
-            f"Give the round debrief.\n"
-            f"<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+            f"Give the round debrief."
         )
+        
+        prompt, stop_tokens = self._build_prompt(system, user)
 
         try:
             with self.lock:
                 output = self.llm(
                     prompt,
                     max_tokens=150,
-                    stop=["<|im_end|>", "<|im_start|>"],
+                    stop=stop_tokens,
                     echo=False,
                     temperature=0.75,
                 )
-            text = output['choices'][0]['text'].strip()
-            return text.replace('"', '').replace("Obama:", "").strip()
+            return self._clean_response(output['choices'][0]['text'])
         except Exception as e:
             print(f"Round report error: {e}")
             return ""

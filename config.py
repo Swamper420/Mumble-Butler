@@ -23,7 +23,10 @@ JELLYFIN = {
 # --- PATHS ---
 STATS_FILE = os.getenv("STATS_FILE", "user_stats.csv")
 CHIME_FILE = os.getenv("CHIME_FILE", "chime.wav")
-LLM_MODEL_PATH = os.getenv("LLM_MODEL_PATH", "models/qwen2.5-3b-instruct-q4_k_m.gguf")
+LLM_MODEL_PATH = os.getenv("LLM_MODEL_PATH", "models/gemma-4-9b-it-q4_k_m.gguf")
+LLM_PROMPT_FORMAT = os.getenv("LLM_PROMPT_FORMAT", "gemma") # "gemma" or "chatml"
+LLM_DISABLE_THINKING = os.getenv("LLM_DISABLE_THINKING", "True").lower() == "true"
+
 
 # --- AI CONFIG ---
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "deepdml/faster-distil-whisper-large-v3.5")
