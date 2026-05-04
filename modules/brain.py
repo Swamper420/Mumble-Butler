@@ -94,7 +94,7 @@ class Brain:
         clean_system = base_system.replace("<|think|>", "").strip()
         
         if not thinking_enabled:
-            clean_system += " Respond directly and concisely. Do not use internal reasoning tags."
+            clean_system += " Respond directly and concisely. Do not use <thought> or <reasoning> blocks. Provide your answer immediately."
         else:
             # If thinking is enabled, we need to ensure we have enough tokens
             max_tokens = max(max_tokens, 1024)
@@ -116,7 +116,7 @@ class Brain:
                     max_tokens=max_tokens,
                     stop=stop_tokens,
                     temperature=0.8,
-                    repeat_penalty=1.1
+                    repeat_penalty=1.2
                 )
 
             text = output['choices'][0]['message']['content']
@@ -155,55 +155,55 @@ class Brain:
             return False
 
     def generate_api_response(self, user_prompt: str, max_tokens=None) -> str:
-            """Generate a long-form response intended for the HTTP API."""
-            if not self.llm:
-                return "My brain is offline."
+        """Generate a long-form response intended for the HTTP API."""
+        if not self.llm:
+            return "My brain is offline."
 
-            max_tokens = max_tokens or config.LLM_API_MAX_TOKENS
-            now = datetime.now().strftime('%H:%M')
-            api_system = getattr(config, 'API_SYSTEM_PROMPT', config.SYSTEM_PROMPT)
-            
-            thinking_enabled = "<|think|>" in api_system or not self.disable_thinking
-            clean_system = api_system.replace("<|think|>", "").strip()
-            
-            if not thinking_enabled:
-                clean_system += " Respond directly. Do not use internal reasoning tags."
-            else:
-                max_tokens = max(max_tokens, 1536)
+        max_tokens = max_tokens or config.LLM_API_MAX_TOKENS
+        now = datetime.now().strftime('%H:%M')
+        api_system = getattr(config, 'API_SYSTEM_PROMPT', config.SYSTEM_PROMPT)
+        
+        thinking_enabled = "<|think|>" in api_system or not self.disable_thinking
+        clean_system = api_system.replace("<|think|>", "").strip()
+        
+        if not thinking_enabled:
+            clean_system += " Respond directly. Do not use <thought> or <reasoning> blocks. Provide your answer immediately."
+        else:
+            max_tokens = max(max_tokens, 1536)
 
-            full_system = f"{clean_system}\nContext: It is {now}."
+        full_system = f"{clean_system}\nContext: It is {now}."
 
-            messages = [{"role": "system", "content": full_system}]
+        messages = [{"role": "system", "content": full_system}]
+        if self.api_memory_enabled:
+            with self.lock:
+                messages.extend(self.api_history)
+        messages.append({"role": "user", "content": user_prompt})
+
+        stop_tokens = self._get_stop_tokens()
+
+        try:
+            with self.lock:
+                output = self.llm.create_chat_completion(
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    stop=stop_tokens,
+                    temperature=0.8,
+                    repeat_penalty=1.2
+                )
+
+            text = output['choices'][0]['message']['content']
+            response = self._clean_response(text)
+
             if self.api_memory_enabled:
                 with self.lock:
-                    messages.extend(self.api_history)
-            messages.append({"role": "user", "content": user_prompt})
+                    self.api_history.append({"role": "user", "content": user_prompt})
+                    self.api_history.append({"role": "assistant", "content": response})
+                    if len(self.api_history) > 10:
+                        self.api_history = self.api_history[-10:]
 
-            stop_tokens = self._get_stop_tokens()
-
-            try:
-                with self.lock:
-                    output = self.llm.create_chat_completion(
-                        messages=messages,
-                        max_tokens=max_tokens,
-                        stop=stop_tokens,
-                        temperature=0.8,
-                        repeat_penalty=1.1
-                    )
-
-                text = output['choices'][0]['message']['content']
-                response = self._clean_response(text)
-
-                if self.api_memory_enabled:
-                    with self.lock:
-                        self.api_history.append({"role": "user", "content": user_prompt})
-                        self.api_history.append({"role": "assistant", "content": response})
-                        if len(self.api_history) > 10:
-                            self.api_history = self.api_history[-10:]
-
-                return response
-            except Exception as e:
-                return f"Brain error: {e}"
+            return response
+        except Exception as e:
+            return f"Brain error: {e}"
 
     def recommend_song(self, description, chat_context=None):
         """
