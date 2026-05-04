@@ -99,13 +99,29 @@ class Brain:
             # If thinking is enabled, we need to ensure we have enough tokens
             max_tokens = max(max_tokens, 1024)
             
-        full_system = f"{clean_system}\nContext: It is {now}."
+        full_system = f"{clean_system}\nContext: It is {now}.\nIMPORTANT: Respond only with your character's dialogue. Do NOT repeat the user's input. Do NOT use reasoning blocks."
 
-        messages = [{"role": "system", "content": full_system}]
+        # For Gemma format, we merge the system prompt into the first user message for better instruction following
+        if self.prompt_format == "gemma":
+            messages = [{"role": "user", "content": f"System Instruction: {full_system}\n\nUser Message: {user_prompt}"}]
+        else:
+            messages = [
+                {"role": "system", "content": full_system},
+                {"role": "user", "content": user_prompt}
+            ]
+
         if self.memory_enabled:
             with self.lock:
+                # Insert history between system/first user and current user
                 messages.extend(self.history)
-        messages.append({"role": "user", "content": user_prompt})
+                if self.prompt_format != "gemma":
+                     # messages is already [system, current_user]
+                     # we want [system, ...history, current_user]
+                     messages = [messages[0]] + self.history + [messages[1]]
+                else:
+                     # messages is already [merged_first_user]
+                     # we want [...history, merged_first_user]
+                     messages = self.history + messages
 
         stop_tokens = self._get_stop_tokens()
 
@@ -116,7 +132,7 @@ class Brain:
                     max_tokens=max_tokens,
                     stop=stop_tokens,
                     temperature=0.8,
-                    repeat_penalty=1.2
+                    repeat_penalty=1.5
                 )
 
             text = output['choices'][0]['message']['content']
@@ -171,13 +187,22 @@ class Brain:
         else:
             max_tokens = max(max_tokens, 1536)
 
-        full_system = f"{clean_system}\nContext: It is {now}."
+        full_system = f"{clean_system}\nContext: It is {now}.\nIMPORTANT: Respond directly. Do NOT repeat the input."
 
-        messages = [{"role": "system", "content": full_system}]
+        if self.prompt_format == "gemma":
+            messages = [{"role": "user", "content": f"Instruction: {full_system}\n\nInput: {user_prompt}"}]
+        else:
+            messages = [
+                {"role": "system", "content": full_system},
+                {"role": "user", "content": user_prompt}
+            ]
+
         if self.api_memory_enabled:
             with self.lock:
-                messages.extend(self.api_history)
-        messages.append({"role": "user", "content": user_prompt})
+                if self.prompt_format == "gemma":
+                    messages = self.api_history + messages
+                else:
+                    messages = [messages[0]] + self.api_history + [messages[1]]
 
         stop_tokens = self._get_stop_tokens()
 
@@ -188,7 +213,7 @@ class Brain:
                     max_tokens=max_tokens,
                     stop=stop_tokens,
                     temperature=0.8,
-                    repeat_penalty=1.2
+                    repeat_penalty=1.5
                 )
 
             text = output['choices'][0]['message']['content']
