@@ -84,11 +84,15 @@ class Brain:
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or personality_prompt or config.SYSTEM_PROMPT
         
-        # Add snappy directive
-        if self.disable_thinking:
-            base_system += " Respond directly. No thinking blocks."
+        # Thinking is enabled ONLY if <|think|> is in the system prompt
+        thinking_enabled = "<|think|>" in base_system
+        # Remove the token from the actual prompt sent to the model
+        clean_system = base_system.replace("<|think|>", "").strip()
+        
+        if not thinking_enabled:
+            clean_system += " Respond directly and concisely. Do not use internal reasoning."
             
-        full_system = f"{base_system}\nContext: It is {now}."
+        full_system = f"{clean_system}\nContext: It is {now}."
 
         messages = [{"role": "system", "content": full_system}]
         if self.memory_enabled:
@@ -96,12 +100,19 @@ class Brain:
                 messages.extend(self.history)
         messages.append({"role": "user", "content": user_prompt})
 
+        # Dynamic stop tokens: if thinking is DISABLED, we stop as soon as a thought tag starts
+        stop_tokens = self._get_stop_tokens()
+        if not thinking_enabled:
+            stop_tokens.extend(["<thought>", "<|thought|>", "<reasoning>"])
+
         try:
             with self.lock:
                 output = self.llm.create_chat_completion(
                     messages=messages,
                     max_tokens=max_tokens,
-                    stop=self._get_stop_tokens()
+                    stop=stop_tokens,
+                    temperature=0.8, # Add some temperature to prevent repetition
+                    repeat_penalty=1.1 # Prevent the model from looping on the same phrase
                 )
 
             text = output['choices'][0]['message']['content']
@@ -146,9 +157,13 @@ class Brain:
 
             now = datetime.now().strftime('%H:%M')
             api_system = getattr(config, 'API_SYSTEM_PROMPT', config.SYSTEM_PROMPT)
-            if self.disable_thinking:
-                api_system += " No thinking blocks."
-            full_system = f"{api_system}\nContext: It is {now}."
+            
+            thinking_enabled = "<|think|>" in api_system
+            clean_system = api_system.replace("<|think|>", "").strip()
+            
+            if not thinking_enabled:
+                clean_system += " Respond directly. Do not use internal reasoning."
+            full_system = f"{clean_system}\nContext: It is {now}."
 
             messages = [{"role": "system", "content": full_system}]
             if self.api_memory_enabled:
@@ -156,12 +171,18 @@ class Brain:
                     messages.extend(self.api_history)
             messages.append({"role": "user", "content": user_prompt})
 
+            stop_tokens = self._get_stop_tokens()
+            if not thinking_enabled:
+                stop_tokens.extend(["<thought>", "<|thought|>", "<reasoning>"])
+
             try:
                 with self.lock:
                     output = self.llm.create_chat_completion(
                         messages=messages,
                         max_tokens=max_tokens,
-                        stop=self._get_stop_tokens()
+                        stop=stop_tokens,
+                        temperature=0.8,
+                        repeat_penalty=1.1
                     )
 
                 text = output['choices'][0]['message']['content']
