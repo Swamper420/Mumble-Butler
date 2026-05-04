@@ -40,18 +40,18 @@ class Brain:
     def _build_prompt(self, system_prompt, user_prompt, history=None):
         """Constructs a prompt based on the configured format."""
         
-        # If thinking is disabled, add a strong instruction to the system prompt
+        # If thinking is disabled, add a very strong instruction
         if self.disable_thinking:
-            system_prompt = f"{system_prompt}\n\nIMPORTANT: Do NOT use thinking blocks or internal reasoning. Respond directly and concisely."
+            system_prompt = (
+                f"{system_prompt}\n\n"
+                "CRITICAL: Do NOT use <thought> or <reasoning> blocks. "
+                "Do NOT perform internal reasoning. "
+                "START your response DIRECTLY with the message for the user."
+            )
 
         if self.prompt_format == "gemma":
-            # Gemma 2/4 template
-            # <start_of_turn>user
-            # {system}\n\n{prompt}<end_of_turn>
-            # <start_of_turn>model
-            
-            prompt = "<start_of_turn>user\n"
-            prompt += f"system\n{system_prompt}\n\n"
+            # Standard Gemma 2/4 template
+            prompt = f"<start_of_turn>user\n{system_prompt}\n\n"
             
             if history:
                 for msg in history:
@@ -59,7 +59,7 @@ class Brain:
                     prompt += f"{msg['content']}<end_of_turn>\n<start_of_turn>{role}\n"
             
             prompt += f"{user_prompt}<end_of_turn>\n<start_of_turn>model\n"
-            return prompt, ["<end_of_turn>", "<start_of_turn>", "<thought>", "<reasoning>"]
+            return prompt, ["<end_of_turn>", "<start_of_turn>", "<thought>", "<reasoning>", "</thought>", "</reasoning>"]
         
         else:
             # Default ChatML template
@@ -74,15 +74,24 @@ class Brain:
                 f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
                 f"<|im_start|>assistant\n"
             )
-            return prompt, ["<|im_end|>", "<|im_start|>", "<thought>", "<reasoning>"]
+            return prompt, ["<|im_end|>", "<|im_start|>", "<thought>", "<reasoning>", "</thought>", "</reasoning>"]
 
     def _clean_response(self, text):
-        """Cleans model-specific tags and artifacts from the response."""
+        """Cleans model-specific tags and strips out any thought/reasoning blocks."""
+        import re
+        
+        # 1. Remove entire thought/reasoning blocks and their content
+        text = re.sub(r'<(thought|reasoning)>.*?</\1>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        # 2. Remove any stray opening/closing tags if the model got cut off
+        text = re.sub(r'<(thought|reasoning)>.*', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'.*?</(thought|reasoning)>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        
+        # 3. Remove model-specific turn tags
         tags = ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>", "<thought>", "</thought>", "<reasoning>", "</reasoning>"]
         for tag in tags:
             text = text.replace(tag, "")
         
-        # Handle cases where model might still try to label the output
+        # 4. Final polish
         text = text.strip().replace('"', '').replace("Obama:", "").replace("Assistant:", "").replace("Model:", "")
         return text.strip()
 
