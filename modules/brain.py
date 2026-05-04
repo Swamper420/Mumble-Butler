@@ -28,99 +28,44 @@ class Brain:
         if LLM_AVAILABLE:
             try:
                 print(f"🧠 Loading LLM ({config.LLM_MODEL_PATH})...")
+                # Use official chat_format for the specific model architecture
+                chat_format = "gemma" if self.prompt_format == "gemma" else "chatml"
+                
                 self.llm = Llama(
                     model_path=config.LLM_MODEL_PATH,
                     n_ctx=config.LLM_CONTEXT_SIZE,
                     n_gpu_layers=config.LLM_GPU_LAYERS,
-                    verbose=False
+                    verbose=False,
+                    chat_format=chat_format
                 )
             except Exception as e:
                 print(f"❌ LLM Error: {e}")
 
-    def _build_prompt(self, system_prompt, user_prompt, history=None):
-        """
-        Constructs a prompt based on the configured format.
-        Uses a 'Context-First' architecture to ensure persona dominance.
-        """
-        
-        # Directive steering for "no-thinking" performance
-        if self.disable_thinking:
-            steering = (
-                "\n\n[DIRECTIVE: Respond as your persona immediately. "
-                "Bypass internal reasoning. Do not use <thought> tags. "
-                "Start the response directly.]"
-            )
-            system_prompt += steering
-
+    def _get_stop_tokens(self):
+        """Returns standard stop tokens for the current format."""
         if self.prompt_format == "gemma":
-            # Gemma 2/4 Optimized Template
-            prompt = ""
-            
-            # Prepend system context to the very first turn
-            system_header = f"ROLE / CONTEXT:\n{system_prompt}\n\n"
-            
-            if history:
-                for i, msg in enumerate(history):
-                    role = "user" if msg['role'] == "user" else "model"
-                    content = msg['content']
-                    # Inject system instructions into the very first turn of the history
-                    if i == 0:
-                        content = system_header + content
-                    prompt += f"<start_of_turn>{role}\n{content}<end_of_turn>\n"
-                
-                # Add current user prompt
-                prompt += f"<start_of_turn>user\n{user_prompt}<end_of_turn>\n<start_of_turn>model\n"
-            else:
-                # Single-turn optimization
-                prompt = f"<start_of_turn>user\n{system_header}{user_prompt}<end_of_turn>\n<start_of_turn>model\n"
-            
-            return prompt, ["<end_of_turn>", "<start_of_turn>", "<thought>", "<reasoning>", "</thought>", "</reasoning>"]
-        
-        else:
-            # ChatML (Qwen/Llama) Optimized Template
-            prompt = f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
-            
-            if history:
-                for msg in history:
-                    role = msg['role'] # 'user', 'assistant', or 'system'
-                    prompt += f"<|im_start|>{role}\n{msg['content']}<|im_end|>\n"
-
-            prompt += f"<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n"
-            return prompt, ["<|im_end|>", "<|im_start|>", "<thought>", "<reasoning>", "</thought>", "</reasoning>"]
+            return ["<end_of_turn>", "<start_of_turn>", "<thought>", "</thought>"]
+        return ["<|im_end|>", "<|im_start|>", "<thought>", "</thought>"]
 
     def _clean_response(self, text):
         """
-        Robust multi-pass sanitizer to strip tags, thought blocks, and role labels.
+        Refined sanitizer. Only strips metadata/tags, never common words.
         """
         import re
         
-        # Pass 1: Aggressive Regex for Thought/Reasoning blocks
-        # Handles balanced and unbalanced tags (in case of truncation)
+        # 1. Strip thought blocks (the 'snappy' requirement)
         text = re.sub(r'<(thought|reasoning)>.*?</\1>', '', text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r'<(thought|reasoning)>.*', '', text, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r'.*?</(thought|reasoning)>', '', text, flags=re.DOTALL | re.IGNORECASE)
         
-        # Pass 2: Specific turn tag cleanup
-        tags = [
-            "<|im_start|>", "<|im_end|>", 
-            "<start_of_turn>", "<end_of_turn>", 
-            "<thought>", "</thought>", 
-            "<reasoning>", "</reasoning>",
-            "assistant", "model", "user", "system"
-        ]
-        # Only remove tags if they appear as standalone labels at the start
-        for tag in tags:
-            text = text.replace(f"{tag}\n", "").replace(tag, "")
+        # 2. Strip only structural tags, not content words
+        structural_tags = ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>"]
+        for tag in structural_tags:
+            text = text.replace(tag, "")
         
-        # Pass 3: Common "Parroting" Prefixes
-        prefixes = ["Obama:", "Assistant:", "Model:", "AI:", "Response:", "Butler:"]
-        for p in prefixes:
-            if text.lower().startswith(p.lower()):
-                text = text[len(p):].strip()
+        # 3. Clean common chat-format artifacts (only at the very start)
+        text = re.sub(r'^(assistant|model|user|system|obama|butler)[:\s]+', '', text, flags=re.IGNORECASE)
         
-        # Final polish
-        text = text.strip().replace('"', '')
-        return text
+        return text.strip().replace('"', '')
 
     def toggle_memory(self):
         with self.lock:
@@ -138,20 +83,28 @@ class Brain:
 
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or personality_prompt or config.SYSTEM_PROMPT
+        
+        # Add snappy directive
+        if self.disable_thinking:
+            base_system += " Respond directly. No thinking blocks."
+            
         full_system = f"{base_system}\nContext: It is {now}."
 
-        history = None
+        messages = [{"role": "system", "content": full_system}]
         if self.memory_enabled:
             with self.lock:
-                history = self.history[:]
-
-        prompt, stop_tokens = self._build_prompt(full_system, user_prompt, history)
+                messages.extend(self.history)
+        messages.append({"role": "user", "content": user_prompt})
 
         try:
             with self.lock:
-                output = self.llm(prompt, max_tokens=max_tokens, stop=stop_tokens, echo=False)
+                output = self.llm.create_chat_completion(
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    stop=self._get_stop_tokens()
+                )
 
-            text = output['choices'][0]['text']
+            text = output['choices'][0]['message']['content']
             response = self._clean_response(text)
 
             self._update_history(user_prompt, response)
@@ -193,20 +146,25 @@ class Brain:
 
             now = datetime.now().strftime('%H:%M')
             api_system = getattr(config, 'API_SYSTEM_PROMPT', config.SYSTEM_PROMPT)
+            if self.disable_thinking:
+                api_system += " No thinking blocks."
             full_system = f"{api_system}\nContext: It is {now}."
 
-            history = None
+            messages = [{"role": "system", "content": full_system}]
             if self.api_memory_enabled:
                 with self.lock:
-                    history = self.api_history[:]
-
-            prompt, stop_tokens = self._build_prompt(full_system, user_prompt, history)
+                    messages.extend(self.api_history)
+            messages.append({"role": "user", "content": user_prompt})
 
             try:
                 with self.lock:
-                    output = self.llm(prompt, max_tokens=max_tokens, stop=stop_tokens, echo=False)
+                    output = self.llm.create_chat_completion(
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        stop=self._get_stop_tokens()
+                    )
 
-                text = output['choices'][0]['text']
+                text = output['choices'][0]['message']['content']
                 response = self._clean_response(text)
 
                 if self.api_memory_enabled:
@@ -240,27 +198,24 @@ class Brain:
         # 2. Generate Seeds
         # We ask for a list of seeds. We emphasize sticking to the user's request if it's specific.
         system = (
-            "You are a master music curator. If the user asks for a specific artist, genre, or vibe, "
-            "you MUST prioritize it. Generate a list of 5 search terms. "
-            "If the request is specific (e.g. 'Play Queen'), the terms must be that artist and 4 very similar ones. "
-            "If the request is vague, be more creative. "
-            "Output ONLY the terms separated by commas."
+            "You are a master music curator. prioritized user artists. "
+            "Generate 5 search terms separated by commas. No thinking blocks."
         )
-        user = f"Context: {context_str}\nUser request: {description}\nGive me 5 music seeds."
+        user = f"Context: {context_str}\nUser request: {description}"
         
-        prompt, stop_tokens = self._build_prompt(system, user)
-
         try:
             with self.lock:
-                output = self.llm(
-                    prompt,
+                output = self.llm.create_chat_completion(
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user}
+                    ],
                     max_tokens=60,
-                    stop=stop_tokens + ["\n"],
-                    echo=False,
+                    stop=self._get_stop_tokens() + ["\n"],
                     temperature=0.7
                 )
             
-            seed_text = output['choices'][0]['text'].strip()
+            seed_text = output['choices'][0]['message']['content'].strip()
             llm_seeds = [s.strip() for s in seed_text.split(',') if s.strip()]
             
             # Final seed list: [User's original request] + [LLM's similar/diverse seeds]
@@ -304,24 +259,21 @@ class Brain:
 
         system = (
             f"{config.SYSTEM_PROMPT} "
-            f"It is currently {now}. You are giving a periodic hourly status update to the room. "
-            f"Mention the current time, acknowledge who is in the room ({users_text}), "
-            f"and briefly summarize or comment on the vibe based on the last minute of conversation if any. "
-            f"Keep it brief (under 4 sentences), witty, and butler-like."
+            f"Hourly update for {now}. Room: {users_text}. No thinking."
         )
-        user = f"Recent conversation:\n{transcript_text}\n\nGive the status update."
+        user = f"Recent conversation:\n{transcript_text}"
         
-        prompt, stop_tokens = self._build_prompt(system, user)
-
         try:
             with self.lock:
-                output = self.llm(
-                    prompt,
+                output = self.llm.create_chat_completion(
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user}
+                    ],
                     max_tokens=350,
-                    stop=stop_tokens + ["\n"],
-                    echo=False
+                    stop=self._get_stop_tokens() + ["\n"]
                 )
-            return self._clean_response(output['choices'][0]['text'])
+            return self._clean_response(output['choices'][0]['message']['content'])
         except Exception as e:
             print(f"Report generation error: {e}")
             return f"It is {now}. I am unable to assess the situation due to a processing error."
@@ -358,24 +310,22 @@ class Brain:
 
         system = (
             f"{config.SYSTEM_PROMPT} "
-            f"You are watching a CS2 match and reacting to the kill feed. "
-            f"Be brief (1-2 sentences), entertaining, and in-character. "
-            f"React proportionally: mild for a single kill, increasingly excited for multi-kills and aces."
+            f"Watching CS2 match. React to {multi_label}. No thinking."
         )
-        user = f"The following just happened — {multi_label}:\n{kill_text}\nGive a short live commentary reaction."
+        user = f"Kill feed:\n{kill_text}"
         
-        prompt, stop_tokens = self._build_prompt(system, user)
-
         try:
             with self.lock:
-                output = self.llm(
-                    prompt,
+                output = self.llm.create_chat_completion(
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user}
+                    ],
                     max_tokens=80,
-                    stop=stop_tokens,
-                    echo=False,
+                    stop=self._get_stop_tokens(),
                     temperature=0.85,
                 )
-            return self._clean_response(output['choices'][0]['text'])
+            return self._clean_response(output['choices'][0]['message']['content'])
         except Exception as e:
             print(f"Kill commentary error: {e}")
             return ""
@@ -428,30 +378,22 @@ class Brain:
 
         system = (
             f"{config.SYSTEM_PROMPT} "
-            f"You are providing a post-round CS2 debrief. Be concise (2-3 sentences). "
-            f"{context_str} "
-            f"Also briefly comment on the overall score and the economy for next round — "
-            f"who can full-buy, who is forced to eco. Stay in character."
+            f"CS2 post-round debrief. Winner: {win_team}. No thinking."
         )
-        user = (
-            f"Round {round_num} on {map_name} just ended.\n"
-            f"Winner: {win_team} ({condition}). Score: CT {ct_score} — T {t_score}.\n"
-            f"Player stats:\n{player_text}\n"
-            f"Give the round debrief."
-        )
+        user = f"Score: CT {ct_score} - T {t_score}\nStats:\n{player_text}"
         
-        prompt, stop_tokens = self._build_prompt(system, user)
-
         try:
             with self.lock:
-                output = self.llm(
-                    prompt,
+                output = self.llm.create_chat_completion(
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user}
+                    ],
                     max_tokens=150,
-                    stop=stop_tokens,
-                    echo=False,
+                    stop=self._get_stop_tokens(),
                     temperature=0.75,
                 )
-            return self._clean_response(output['choices'][0]['text'])
+            return self._clean_response(output['choices'][0]['message']['content'])
         except Exception as e:
             print(f"Round report error: {e}")
             return ""
