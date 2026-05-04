@@ -44,20 +44,20 @@ class Brain:
     def _get_stop_tokens(self):
         """Returns standard stop tokens for the current format."""
         if self.prompt_format == "gemma":
-            return ["<end_of_turn>", "<start_of_turn>", "<thought>", "</thought>"]
-        return ["<|im_end|>", "<|im_start|>", "<thought>", "</thought>"]
+            return ["<end_of_turn>", "<start_of_turn>"]
+        return ["<|im_end|>", "<|im_start|>"]
 
     def _clean_response(self, text):
         """
-        Refined sanitizer. Only strips metadata/tags, never common words.
+        Refined sanitizer. Strips thinking blocks and structural tags.
         """
         import re
         
-        # 1. Strip thought blocks (the 'snappy' requirement)
+        # 1. Strip thought blocks (handle both complete and incomplete)
         text = re.sub(r'<(thought|reasoning)>.*?</\1>', '', text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r'<(thought|reasoning)>.*', '', text, flags=re.DOTALL | re.IGNORECASE)
         
-        # 2. Strip only structural tags, not content words
+        # 2. Strip only structural tags
         structural_tags = ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>"]
         for tag in structural_tags:
             text = text.replace(tag, "")
@@ -65,7 +65,10 @@ class Brain:
         # 3. Clean common chat-format artifacts (only at the very start)
         text = re.sub(r'^(assistant|model|user|system|obama|butler)[:\s]+', '', text, flags=re.IGNORECASE)
         
-        return text.strip().replace('"', '')
+        # 4. Collapse excessive whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        return text
 
     def toggle_memory(self):
         with self.lock:
@@ -78,19 +81,23 @@ class Brain:
         with self.lock:
             self.api_history = []
 
-    def generate_response(self, user_prompt: str, max_tokens=120, personality_prompt: str = None) -> str:
+    def generate_response(self, user_prompt: str, max_tokens=None, personality_prompt: str = None) -> str:
         if not self.llm: return "My brain is offline."
 
+        max_tokens = max_tokens or config.LLM_MAX_TOKENS
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or personality_prompt or config.SYSTEM_PROMPT
         
-        # Thinking is enabled ONLY if <|think|> is in the system prompt
-        thinking_enabled = "<|think|>" in base_system
+        # Thinking is enabled ONLY if <|think|> is in the system prompt OR if config forces it
+        thinking_enabled = "<|think|>" in base_system or not self.disable_thinking
         # Remove the token from the actual prompt sent to the model
         clean_system = base_system.replace("<|think|>", "").strip()
         
         if not thinking_enabled:
-            clean_system += " Respond directly and concisely. Do not use internal reasoning."
+            clean_system += " Respond directly and concisely. Do not use internal reasoning tags."
+        else:
+            # If thinking is enabled, we need to ensure we have enough tokens
+            max_tokens = max(max_tokens, 1024)
             
         full_system = f"{clean_system}\nContext: It is {now}."
 
@@ -100,10 +107,7 @@ class Brain:
                 messages.extend(self.history)
         messages.append({"role": "user", "content": user_prompt})
 
-        # Dynamic stop tokens: if thinking is DISABLED, we stop as soon as a thought tag starts
         stop_tokens = self._get_stop_tokens()
-        if not thinking_enabled:
-            stop_tokens.extend(["<thought>", "<|thought|>", "<reasoning>"])
 
         try:
             with self.lock:
@@ -111,8 +115,8 @@ class Brain:
                     messages=messages,
                     max_tokens=max_tokens,
                     stop=stop_tokens,
-                    temperature=0.8, # Add some temperature to prevent repetition
-                    repeat_penalty=1.1 # Prevent the model from looping on the same phrase
+                    temperature=0.8,
+                    repeat_penalty=1.1
                 )
 
             text = output['choices'][0]['message']['content']
@@ -150,19 +154,23 @@ class Brain:
                 return True
             return False
 
-    def generate_api_response(self, user_prompt: str, max_tokens=200) -> str:
+    def generate_api_response(self, user_prompt: str, max_tokens=None) -> str:
             """Generate a long-form response intended for the HTTP API."""
             if not self.llm:
                 return "My brain is offline."
 
+            max_tokens = max_tokens or config.LLM_API_MAX_TOKENS
             now = datetime.now().strftime('%H:%M')
             api_system = getattr(config, 'API_SYSTEM_PROMPT', config.SYSTEM_PROMPT)
             
-            thinking_enabled = "<|think|>" in api_system
+            thinking_enabled = "<|think|>" in api_system or not self.disable_thinking
             clean_system = api_system.replace("<|think|>", "").strip()
             
             if not thinking_enabled:
-                clean_system += " Respond directly. Do not use internal reasoning."
+                clean_system += " Respond directly. Do not use internal reasoning tags."
+            else:
+                max_tokens = max(max_tokens, 1536)
+
             full_system = f"{clean_system}\nContext: It is {now}."
 
             messages = [{"role": "system", "content": full_system}]
@@ -172,8 +180,6 @@ class Brain:
             messages.append({"role": "user", "content": user_prompt})
 
             stop_tokens = self._get_stop_tokens()
-            if not thinking_enabled:
-                stop_tokens.extend(["<thought>", "<|thought|>", "<reasoning>"])
 
             try:
                 with self.lock:

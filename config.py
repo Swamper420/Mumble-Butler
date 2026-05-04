@@ -26,6 +26,8 @@ CHIME_FILE = os.getenv("CHIME_FILE", "chime.wav")
 LLM_MODEL_PATH = os.getenv("LLM_MODEL_PATH", "models/gemma-4-9b-it-q4_k_m.gguf")
 LLM_PROMPT_FORMAT = os.getenv("LLM_PROMPT_FORMAT", "gemma") # "gemma" or "chatml"
 LLM_DISABLE_THINKING = os.getenv("LLM_DISABLE_THINKING", "True").lower() == "true"
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
+LLM_API_MAX_TOKENS = int(os.getenv("LLM_API_MAX_TOKENS", "2048"))
 
 
 # --- AI CONFIG ---
