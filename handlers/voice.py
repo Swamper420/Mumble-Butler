@@ -10,7 +10,19 @@ except ImportError:
 class VoiceHandler:
     def __init__(self, bot):
         self.bot = bot
-        self.sorted_keywords = sorted(config.ACTIVATION_KEYWORDS, key=len, reverse=True)
+        # Collect base names of custom models and builtins from wakeword detector
+        keywords = list(config.ACTIVATION_KEYWORDS)
+        if hasattr(bot, 'wakeword_detector') and bot.wakeword_detector.enabled and bot.wakeword_detector.model:
+            for k in bot.wakeword_detector.model.models.keys():
+                clean_name = k.lower().replace("_", " ").strip()
+                if clean_name not in keywords:
+                    keywords.append(clean_name)
+                if "_" in k:
+                    collapsed_name = k.lower().replace("_", "").strip()
+                    if collapsed_name not in keywords:
+                        keywords.append(collapsed_name)
+
+        self.sorted_keywords = sorted(keywords, key=len, reverse=True)
         # Pre-compile the exact activation pattern for fast-path matching
         self.activation_pattern = re.compile(
             r"^(" + "|".join(re.escape(k.lower()) for k in self.sorted_keywords) + r")\b"
