@@ -19,17 +19,18 @@ class _LLMRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        brain = _brain
-        if self.path == "/health":
-            self._send_json(200, {
-                "status": "ok",
-                "llm_loaded": bool(brain and brain.llm is not None),
-                "api_memory_enabled": getattr(config, 'LLM_API_MEMORY_ENABLED', False)
-            })
-            return
-        self._send_json(404, {"error": "Not found"})
+            brain = _brain
+            if self.path == "/health":
+                self._send_json(200, {
+                    "status": "ok",
+                    "llm_loaded": bool(brain and brain.llm is not None),
+                    "api_memory_enabled": getattr(config, 'LLM_API_MEMORY_ENABLED', False) # <-- Added info
+                })
+                return
+            self._send_json(404, {"error": "Not found"})
 
     def do_POST(self):
+
         if self.path == "/reset_memory":
             if _brain:
                 _brain.reset_api_memory()
@@ -79,7 +80,7 @@ class _LLMRequestHandler(BaseHTTPRequestHandler):
             response = brain.generate_api_response(prompt.strip(), max_tokens=max_tokens)
         except Exception as e:
             print(f"LLM processing failed: {e}")
-            self._send_json(500, {"error": f"LLM processing failed: {e}"})
+            self._send_json(500, {"error": "LLM processing failed"})
             return
         self._send_json(200, {"response": response})
 
