@@ -46,12 +46,42 @@ class Brain:
         with self.lock:
             self.api_history = []
 
+<<<<<<< HEAD
     def generate_response(self, user_prompt: str, max_tokens=120, personality_prompt: str = None) -> str:
+=======
+    def generate_response(self, user_prompt: str, max_tokens=None) -> str:
+>>>>>>> c87e085 (refactor: remove CS2 GSI, Jellyfin integration, and persona system to streamline core functionality)
         if not self.llm: return "My brain is offline."
 
         now = datetime.now().strftime('%H:%M')
+<<<<<<< HEAD
         base_system = self.dynamic_prompt or personality_prompt or config.SYSTEM_PROMPT
         full_system = f"{base_system}\nContext: It is {now}."
+=======
+        base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
+        
+        # Thinking is enabled ONLY if <|think|> is in the system prompt OR if config forces it
+        thinking_enabled = "<|think|>" in base_system or not self.disable_thinking
+        # Remove the token from the actual prompt sent to the model
+        clean_system = base_system.replace("<|think|>", "").strip()
+        
+        if not thinking_enabled:
+            clean_system += " Respond directly and concisely. Do not use <thought> or <reasoning> blocks. Provide your answer immediately."
+        else:
+            # If thinking is enabled, we need to ensure we have enough tokens
+            max_tokens = max(max_tokens, 1024)
+            
+        full_system = f"{clean_system}\nContext: It is {now}.\nIMPORTANT: Respond only with your character's dialogue. Do NOT repeat the user's input. Do NOT use reasoning blocks."
+
+        # For Gemma format, we merge the system prompt into the first user message for better instruction following
+        if self.prompt_format == "gemma":
+            messages = [{"role": "user", "content": f"System Instruction: {full_system}\n\nUser Message: {user_prompt}"}]
+        else:
+            messages = [
+                {"role": "system", "content": full_system},
+                {"role": "user", "content": user_prompt}
+            ]
+>>>>>>> c87e085 (refactor: remove CS2 GSI, Jellyfin integration, and persona system to streamline core functionality)
 
         history_str = ""
         # Only include history if memory is enabled
@@ -261,6 +291,7 @@ class Brain:
         except Exception as e:
             print(f"Report generation error: {e}")
             return f"It is {now}. I am unable to assess the situation due to a processing error."
+<<<<<<< HEAD
 
     def generate_kill_commentary(self, kills: list) -> str:
         """
@@ -398,3 +429,5 @@ class Brain:
         except Exception as e:
             print(f"Round report error: {e}")
             return ""
+=======
+>>>>>>> c87e085 (refactor: remove CS2 GSI, Jellyfin integration, and persona system to streamline core functionality)

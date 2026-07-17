@@ -13,17 +13,12 @@ TARGET_CHANNEL = os.getenv("MUMBLE_TARGET_CHANNEL", "General")
 IGNORED_USERS = os.getenv("MUMBLE_IGNORED_USERS", "YoMusicBot").split(",")
 RECONNECT_DELAY = int(os.getenv("MUMBLE_RECONNECT_DELAY", "5"))
 
-JELLYFIN = {
-    'BASE_URL': os.getenv("JELLYFIN_BASE_URL", "http://127.0.0.1:8096"),
-    'USERNAME': os.getenv("JELLYFIN_USERNAME", ""),
-    'PASSWORD': os.getenv("JELLYFIN_PASSWORD", ""),
-    'API_KEY': os.getenv("JELLYFIN_API_KEY", ""),
-}
+
 
 # --- PATHS ---
 STATS_FILE = os.getenv("STATS_FILE", "user_stats.csv")
 CHIME_FILE = os.getenv("CHIME_FILE", "chime.wav")
-LLM_MODEL_PATH = os.getenv("LLM_MODEL_PATH", "models/gemma-4-9b-it-q4_k_m.gguf")
+LLM_MODEL_PATH = os.getenv("LLM_MODEL_PATH", "models/gemma-3-8b-it-q4_k_m.gguf")
 LLM_PROMPT_FORMAT = os.getenv("LLM_PROMPT_FORMAT", "gemma") # "gemma" or "chatml"
 LLM_DISABLE_THINKING = os.getenv("LLM_DISABLE_THINKING", "True").lower() == "true"
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
@@ -94,7 +89,6 @@ VOICE_TRIGGERS = {
     'REPEAT': ["repeat"],
     'MODE': ["mode"],
     'REMIND': ["remind"],
-    'JELLYFIN_RANDOM': ["jellyfin", "jelly"],
     'STATUS': ["status"],
     'PING': ["ping", "are you there"]
 }
@@ -137,9 +131,4 @@ POLL_RATE = float(os.getenv("POLL_RATE", "0.1"))
 MUSIC_HISTORY_FILE = os.getenv("MUSIC_HISTORY_FILE", "data/music_history.json")
 RECOMMENDER_MAX_HISTORY = int(os.getenv("RECOMMENDER_MAX_HISTORY", "50"))
 
-# --- CS2 GAME STATE INTEGRATION ---
-CS2_GSI_ENABLED = os.getenv("CS2_GSI_ENABLED", "True").lower() == "true"
-CS2_GSI_HOST = os.getenv("CS2_GSI_HOST", "0.0.0.0")
-CS2_GSI_PORT = int(os.getenv("CS2_GSI_PORT", "9100"))
-# Seconds to wait after a kill before flushing the multi-kill buffer
-CS2_KILL_BUFFER_SECONDS = float(os.getenv("CS2_KILL_BUFFER_SECONDS", "3.0"))
+

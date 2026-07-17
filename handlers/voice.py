@@ -1,6 +1,5 @@
 import re
 import config
-from personalities import PERSONALITIES
 
 
 class VoiceHandler:
@@ -41,6 +40,7 @@ class VoiceHandler:
 
         if not handled:
             # If no command matched, let the LLM answer
+<<<<<<< HEAD
             personality_prompt = None
             if user in self.bot.user_personalities:
                 p_key = self.bot.user_personalities[user]
@@ -50,6 +50,9 @@ class VoiceHandler:
                 f"User {user} says: {content}",
                 personality_prompt=personality_prompt
             )
+=======
+            response = self.bot.brain.generate_response(content)
+>>>>>>> c87e085 (refactor: remove CS2 GSI, Jellyfin integration, and persona system to streamline core functionality)
             self.bot.say_async(response, user=user)
 
         return True

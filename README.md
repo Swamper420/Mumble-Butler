@@ -1,6 +1,6 @@
 # 🎙️ Mumble-Butler
 
-A self-hosted AI voice butler for [Mumble](https://www.mumble.info/) — listens to voice in your channel, answers questions, controls music, and now provides live CS2 match commentary.
+A self-hosted AI voice butler for [Mumble](https://www.mumble.info/) — listens to voice in your channel, answers questions, and controls music.
 
 Built around a local LLM ([llama-cpp-python](https://github.com/abetlen/llama-cpp-python)), [faster-whisper](https://github.com/SYSTRAN/faster-whisper) for speech-to-text, and [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) for text-to-speech — everything runs on-device, no cloud required.
 
@@ -12,7 +12,6 @@ Built around a local LLM ([llama-cpp-python](https://github.com/abetlen/llama-cp
 - Wake-word activation (default: `obama`, `opama`, `opal`, `opa`)
 - Answers natural language questions via a local LLM
 - Per-user conversation memory (toggleable)
-- Per-user random personality assignment on channel join — five distinct personas, each with their own TTS voice
 
 ### 🎵 Music Control
 Forwards commands to [botamusique](https://github.com/azlux/botamusique) via Mumble text chat:
@@ -27,14 +26,6 @@ Forwards commands to [botamusique](https://github.com/azlux/botamusique) via Mum
 | *Obama, volume \<0–100\>* | Set volume |
 | *Obama, repeat \<n\>* | Repeat current track n times |
 | *Obama, mode \<one-shot\|autoplay\|repeat\|random\>* | Set playback mode |
-
-### 🎮 CS2 Live Commentary
-Receives real-time match data from CS2 via **Game State Integration** (GSI) and announces events in the Mumble channel:
-
-- **Kill feed** — buffers kills for 3 seconds, then delivers in-character LLM commentary scaled to the event (single kill → mild, double → excited, ACE → unhinged)
-- **Round-end debrief** — post-round economic analysis: who can full-buy, who is forced to eco, K/D/A highlights, and score update
-- **Bomb planted** — instant quip when the bomb goes down
-- **Game phase announcements** — half-time, game over, warmup
 
 ### ⏰ Other Features
 - **Reminders** — *"Obama, remind me in 10 minutes to check the oven"*
@@ -59,18 +50,16 @@ Two optional HTTP servers start alongside the bot:
 main.py
 └── bot.py  (MadnessBot)
     ├── modules/
-    │   ├── brain.py        — LLM wrapper, memory, song recommender, CS2 commentary
+    │   ├── brain.py        — LLM wrapper, memory, song recommender
     │   ├── ears.py         — faster-whisper STT
     │   ├── voice.py        — Kokoro TTS → 48 kHz PCM
     │   ├── audio_manager.py — per-user audio stream buffering
-    │   ├── cs2_gsi.py      — CS2 Game State Integration HTTP receiver + event engine
     │   ├── recommender.py  — iTunes-backed music recommendation
     │   ├── llm_api.py      — local HTTP LLM API server
     │   └── voice_api.py    — local HTTP STT API server
-    ├── handlers/
-    │   ├── voice.py        — wake-word detection + voice command routing
-    │   └── text.py         — Mumble text chat command routing
-    └── personalities.py    — per-user persona definitions
+    └── handlers/
+        ├── voice.py        — wake-word detection + voice command routing
+        └── text.py         — Mumble text chat command routing
 ```
 
 ---
@@ -99,62 +88,78 @@ pip install -r requirements.txt
 
 ## Setup
 
-### 1. Clone and configure
-
-```bash
-git clone https://github.com/Swamper420/Mumble-Butler.git
-cd Mumble-Butler
-cp .env.example .env
-```
-
-Edit `.env` with your values (see [Configuration](#configuration)).
-
-### 2. Download a GGUF model
-
-Place a `llama-cpp`-compatible GGUF model in the `models/` directory.  
-Default expected path: `models/qwen2.5-3b-instruct-q4_k_m.gguf`
-
-Recommended: [Qwen2.5-3B-Instruct-Q4_K_M](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF)
-
-### 3. Run
+1. Clone this repository.
+2. Install dependencies (see above).
+3. Download a GGUF format LLM model (e.g. `gemma-3-8b-it-q4_k_m.gguf` or similar) and place it under `models/`.
+4. Copy `.env.example` to `.env` and fill in your Mumble server address.
+5. Run the bot:
 
 ```bash
 python main.py
 ```
 
+### Forcing HTTP APIs on
+By default, the HTTP servers only launch if `START_LLM_API_WITH_BOT` and `START_VOICE_API_WITH_BOT` are set to `True` in `.env`.
+To override this and force both APIs to run alongside the bot:
+```bash
+python main.py --api
+```
+
+### Running only the HTTP APIs (No Mumble Connection)
+To run only the LLM & Voice transcribing servers as a lightweight microservice (without connecting the bot to any Mumble server):
+```bash
+python main.py --api-only
+```
+
 ---
 
-## Configuration
+## Environment Variables (`.env`)
 
-All settings can be overridden via `.env` or environment variables.
+Configure the bot by setting these variables in your `.env` file:
 
-### Mumble connection
+### Connection
 
 | Variable | Default | Description |
 |---|---|---|
-| `MUMBLE_SERVER_IP` | `127.0.0.1` | Mumble server IP |
+| `MUMBLE_SERVER_IP` | `127.0.0.1` | Mumble server address |
 | `MUMBLE_SERVER_PORT` | `64738` | Mumble server port |
-| `MUMBLE_BOT_USERNAME` | `Obama` | Bot display name |
-| `MUMBLE_PASSWORD` | *(empty)* | Server password |
-| `MUMBLE_TARGET_CHANNEL` | `General` | Channel to join on connect |
-| `MUMBLE_IGNORED_USERS` | `YoMusicBot` | Comma-separated users to ignore |
-| `MUMBLE_RECONNECT_DELAY` | `5` | Seconds between reconnect attempts |
+| `MUMBLE_BOT_USERNAME` | `Obama` | Bot username |
+| `MUMBLE_PASSWORD` | *(empty)* | Server password (if required) |
+| `MUMBLE_TARGET_CHANNEL` | `General` | Channel to join |
+| `MUMBLE_IGNORED_USERS` | `YoMusicBot` | Users to ignore (comma-separated) |
+| `MUMBLE_RECONNECT_DELAY` | `5` | Reconnection interval (seconds) |
 
-### AI models
+### LLM / Brain
 
 | Variable | Default | Description |
 |---|---|---|
-| `LLM_MODEL_PATH` | `models/qwen2.5-3b-instruct-q4_k_m.gguf` | Path to GGUF model |
-| `LLM_CONTEXT_SIZE` | `2000` | LLM context window tokens |
-| `LLM_GPU_LAYERS` | `-1` | GPU layers (`-1` = all) |
-| `WHISPER_MODEL_SIZE` | `deepdml/faster-distil-whisper-large-v3.5` | Whisper model |
-| `WHISPER_DEVICE` | `cuda` | `cuda` or `cpu` |
-| `WHISPER_COMPUTE` | `float16` | Whisper compute type |
-| `WHISPER_LANGUAGE` | `fi` | STT language code |
-| `KOKORO_VOICE_ID` | `am_michael` | Default TTS voice |
-| `KOKORO_SPEED` | `0.9` | TTS speech speed |
+| `LLM_MODEL_PATH` | `models/gemma-3-8b-it-q4_k_m.gguf` | Path to GGUF model |
+| `LLM_PROMPT_FORMAT` | `gemma` | Prompt format (`gemma` or `chatml`) |
+| `LLM_CONTEXT_SIZE` | `2000` | Context window size |
+| `LLM_GPU_LAYERS` | `-1` | Number of layers to offload to GPU (`-1` = all) |
+| `LLM_DISABLE_THINKING` | `True` | Forces the model to respond concisely without thoughts |
+| `LLM_MAX_TOKENS` | `1024` | Max tokens for conversation response |
 
-### Behaviour
+### STT / ears
+
+| Variable | Default | Description |
+|---|---|---|
+| `WHISPER_MODEL_SIZE` | `deepdml/faster-distil-whisper-large-v3.5` | Whisper model ID |
+| `WHISPER_DEVICE` | `cuda` | Run Whisper on `cuda` or `cpu` |
+| `WHISPER_COMPUTE` | `float16` | Precision (`float16` or `int8`) |
+| `WHISPER_LANGUAGE` | `fi` | Target language |
+| `SILENCE_THRESHOLD` | `0.5` | Silence threshold |
+| `MIN_AUDIO_LENGTH` | `0.3` | Minimum audio length in seconds |
+| `POLL_RATE` | `0.1` | User audio check interval (seconds) |
+
+### TTS / voice
+
+| Variable | Default | Description |
+|---|---|---|
+| `KOKORO_VOICE_ID` | `am_michael` | Default Kokoro voice ID |
+| `KOKORO_SPEED` | `0.9` | Speech speed |
+
+### Behavior
 
 | Variable | Default | Description |
 |---|---|---|
@@ -175,62 +180,6 @@ All settings can be overridden via `.env` or environment variables.
 | `START_VOICE_API_WITH_BOT` | `True` | Start STT HTTP API on launch |
 | `VOICE_API_HOST` | `127.0.0.1` | Voice API bind host |
 | `VOICE_API_PORT` | `8081` | Voice API port |
-
-### CS2 Game State Integration
-
-| Variable | Default | Description |
-|---|---|---|
-| `CS2_GSI_ENABLED` | `True` | Enable CS2 GSI listener |
-| `CS2_GSI_HOST` | `0.0.0.0` | Bind host (use `0.0.0.0` for LAN) |
-| `CS2_GSI_PORT` | `9100` | Port CS2 will POST to |
-| `CS2_KILL_BUFFER_SECONDS` | `3.0` | Multi-kill aggregation window |
-
-### Jellyfin (optional)
-
-| Variable | Default | Description |
-|---|---|---|
-| `JELLYFIN_BASE_URL` | `http://127.0.0.1:8096` | Jellyfin server URL |
-| `JELLYFIN_USERNAME` | *(empty)* | Jellyfin username |
-| `JELLYFIN_PASSWORD` | *(empty)* | Jellyfin password |
-| `JELLYFIN_API_KEY` | *(empty)* | Jellyfin API key |
-
----
-
-## CS2 Game State Integration Setup
-
-CS2 pushes live match data to a URL you configure. The bot receives it and delivers in-character commentary.
-
-### 1. Copy the config file
-
-Copy `gamestate_integration_mumblebutler.cfg` from the repo root to:
-
-```
-C:\...\Counter-Strike Global Offensive\game\csgo\cfg\
-```
-
-### 2. Edit the IP
-
-Open the file and replace `192.168.X.X` with the **LAN IP of the machine running Mumble-Butler**:
-
-```
-"uri" "http://192.168.X.X:9100/"
-```
-
-### 3. Launch CS2
-
-CS2 auto-loads all `gamestate_integration_*.cfg` files on startup. No launch options needed.
-
-> **Note:** `allplayers_*` stats (all players' health, money, weapons) are only available when **spectating or watching GOTV**. In a live match CS2 provides only your own player state (anti-cheat restriction).
-
-### What the bot announces
-
-| Event | Announcement |
-|---|---|
-| Kill(s) detected | LLM commentary scaled to kill count — single, double, triple, quad, ACE |
-| Round over | Economic debrief: winner, score, per-player eco status and K/D/A |
-| Bomb planted | *"Bomb planted. Tick tock."* |
-| Half-time | *"Half time. Switch sides."* |
-| Game over | *"Game over. Good game everyone."* |
 
 ---
 
@@ -262,20 +211,6 @@ Type these directly in the Mumble channel:
 | `?mode <mode>` | Set playback mode |
 | `?clear` | Clear the queue |
 | `?ping` | Pong! |
-
----
-
-## Personalities
-
-On joining the bot's channel, each user is randomly assigned one of five personas. The bot uses that persona's voice and system prompt for all responses to that user.
-
-| Persona | Voice | Character |
-|---|---|---|
-| The Toxic Diva | Bella | Vain, judgmental, considers herself superior |
-| The Depressed Android | Michael | Marvin-like, finds everything pointless |
-| The Drill Sergeant | George | Aggressive, calls you maggot, demands results |
-| The Space Cadet | Emma | Cosmic vibes, easily distracted, very chill |
-| The Victorian Gossip | Heart | Dramatic whispers, obsessed with scandal |
 
 ---
 

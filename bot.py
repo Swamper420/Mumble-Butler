@@ -25,11 +25,6 @@ from modules.voice_api import create_voice_api_server
 from handlers.text import TextHandler
 from handlers.voice import VoiceHandler
 
-# CS2 Game State Integration
-from modules.cs2_gsi import CS2GSI
-
-# Personalities
-from personalities import PERSONALITIES
 import random
 
 class MadnessBot:
@@ -56,19 +51,14 @@ class MadnessBot:
         self.text_handler = TextHandler(self)
         self.voice_handler = VoiceHandler(self)
 
-        # CS2 GSI
-        self.cs2 = CS2GSI()
-        self.cs2.on_kill_commentary = self._on_cs2_kills
-        self.cs2.on_round_end = self._on_cs2_round_end
-        self.cs2.on_bomb_planted = self._on_cs2_bomb_planted
-        self.cs2.on_game_phase_change = self._on_cs2_phase_change
+
 
         # State
         self.listening_enabled = True
         self.mumble = None
         self.my_channel_id = None
         self.running = True
-        self.user_personalities = {} # user_name -> personality_key
+
         self.start_time = time.time()
 
         # Concurrency
@@ -83,8 +73,7 @@ class MadnessBot:
         self.api_servers = []
         self.api_threads = []
         
-        # CS2 tracking
-        self.cs2_bomb_tasks = set()
+
 
         # Signal handling for graceful shutdown
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -146,12 +135,7 @@ class MadnessBot:
         threading.Thread(target=self._start_async_loop, daemon=True).start()
         self._start_api_servers()
 
-        # Start CS2 GSI listener if enabled
-        if getattr(config, 'CS2_GSI_ENABLED', True):
-            self.cs2.start(
-                host=getattr(config, 'CS2_GSI_HOST', '0.0.0.0'),
-                port=getattr(config, 'CS2_GSI_PORT', 9100),
-            )
+
 
         # Connection / Reconnection Loop
         while self.running:
@@ -194,7 +178,7 @@ class MadnessBot:
         self.running = False
         self.save_stats()
         self._stop_api_servers()
-        self.cs2.stop()
+
         if self.mumble:
             self.mumble.stop()
         # The async loop and api threads are daemonic or handled via join
@@ -248,16 +232,11 @@ class MadnessBot:
         while True:
             speech_generation, text, user_name = await self.queue.get()
             if self.mumble and self.mumble.sound_output:
-                voice_id = None
-                if user_name and user_name in self.user_personalities:
-                    p_key = self.user_personalities[user_name]
-                    voice_id = PERSONALITIES[p_key]['voice_id']
-
                 pcm_data = await self.loop.run_in_executor(
                     self.executor,
                     self.voice.generate_pcm,
                     text,
-                    voice_id
+                    None
                 )
                 if pcm_data and speech_generation == self.speech_generation:
                     try: self.mumble.sound_output.add_sound(pcm_data)
@@ -395,13 +374,6 @@ class MadnessBot:
         if name == config.BOT_USERNAME or name in config.IGNORED_USERS: return
         new_ch = mods['channel_id']
         if new_ch == self.my_channel_id:
-             # Assign a random personality if not already assigned
-             if name not in self.user_personalities:
-                 p_key = random.choice(list(PERSONALITIES.keys()))
-                 self.user_personalities[name] = p_key
-                 p_name = PERSONALITIES[p_key]['name']
-                 self.logger.info(f"🎭 Assigned personality '{p_name}' to {name}")
-             
              self.say_async(f"Welcome {name}", user=name)
 
     def get_status(self):
@@ -424,87 +396,3 @@ class MadnessBot:
 
     def load_stats(self): pass
     def save_stats(self): pass
-
-    # ------------------------------------------------------------------
-    # CS2 GSI Callbacks
-    # ------------------------------------------------------------------
-
-    def _on_cs2_kills(self, kills: list):
-        """Called by CS2GSI after the kill-buffer window closes."""
-        def _generate():
-            count = len(kills)
-            multi = {1: "kill", 2: "double kill", 3: "triple kill",
-                     4: "quad kill"}.get(count, "ACE" if count >= 5 else f"{count} kills")
-            self.logger.info(f"🔫 CS2 kill commentary: {multi} ({count} kill(s))")
-            commentary = self.brain.generate_kill_commentary(kills)
-            if commentary:
-                self.say_async(commentary)
-        self.executor.submit(_generate)
-
-    def _on_cs2_round_end(self, report: dict):
-        """Called by CS2GSI when a round ends. Fires end-of-round debrief."""
-        self.loop.call_soon_threadsafe(self._cancel_bomb_tasks)
-        def _generate():
-            self.logger.info(
-                f"📊 CS2 round end: {report.get('win_team')} wins "
-                f"(CT {report.get('ct_score')} – T {report.get('t_score')})"
-            )
-            summary = self.brain.generate_round_report(report)
-            if summary:
-                self.say_async(summary)
-        self.executor.submit(_generate)
-
-    def _on_cs2_bomb_planted(self, site: str):
-        """Called when the bomb is planted."""
-        site_str = f" on {site}" if site else ""
-        self.say_async(f"Bomb planted{site_str}. Tick tock.")
-        
-        # Schedule the chimes. Bomb lasts 40s.
-        # at 25s elapsed (15s left), play 1 beep
-        # at 30s elapsed (10s left), play 2 beeps
-        # at 35s elapsed (5s left), play 3 beeps
-        def _schedule_bomb_chime(delay, count):
-            async def _task():
-                await asyncio.sleep(delay)
-                self._play_chime_pattern(count)
-            task = self.loop.create_task(_task())
-            self.cs2_bomb_tasks.add(task)
-            task.add_done_callback(self.cs2_bomb_tasks.discard)
-
-        self.loop.call_soon_threadsafe(_schedule_bomb_chime, 25, 1)
-        self.loop.call_soon_threadsafe(_schedule_bomb_chime, 30, 2)
-        self.loop.call_soon_threadsafe(_schedule_bomb_chime, 35, 3)
-
-    def _play_chime_pattern(self, count):
-        """Plays the loaded chime PCM directly, multiple times."""
-        if not self.mumble or not self.mumble.sound_output or not self.chime_pcm:
-            return
-            
-        def _play():
-            for _ in range(count):
-                try: 
-                    self.mumble.sound_output.add_sound(self.chime_pcm)
-                    time.sleep(0.3) # short delay between beeps
-                except: pass
-        threading.Thread(target=_play, daemon=True).start()
-
-    def _cancel_bomb_tasks(self):
-        """Cancel pending bomb timers when round ends."""
-        for task in list(self.cs2_bomb_tasks):
-            task.cancel()
-        self.cs2_bomb_tasks.clear()
-
-    def _on_cs2_phase_change(self, new_phase: str, old_phase: str):
-        """React to major game phase transitions."""
-        if new_phase != "live":
-            self.loop.call_soon_threadsafe(self._cancel_bomb_tasks)
-        announcements = {
-            "map:halftime": "Half time. Switch sides.",
-            "map:gameover":  "Game over. Good game everyone.",
-            "map:warmup":    "Warming up. Get your aim right.",
-            "freezetime":    None,   # too frequent, skip
-            "live":          None,
-        }
-        msg = announcements.get(new_phase)
-        if msg:
-            self.say_async(msg)
