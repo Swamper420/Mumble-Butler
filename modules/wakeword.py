@@ -24,7 +24,11 @@ class WakewordDetector:
                     models_to_load.extend(config.WAKEWORD_BUILTIN_MODELS)
                 
                 if models_to_load:
-                    self.model = Model(wakeword_models=models_to_load)
+                    try:
+                        self.model = Model(wakeword_models=models_to_load)
+                    except TypeError:
+                        # Fallback for older openwakeword versions
+                        self.model = Model(wakeword_model_paths=models_to_load)
                 else:
                     self.model = Model()
                 print("✅ openWakeWord Loaded Successfully")
