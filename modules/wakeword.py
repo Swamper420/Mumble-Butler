@@ -56,8 +56,13 @@ class WakewordDetector:
             # Reset model state/accumulator between predictions
             self.model.reset()
 
-            # 4. Predict in chunks of 1280 samples (80ms)
+            # Prepend silence chunks to bypass the model's internal warmup period (first few frames are zeroed out)
             chunk_size = 1280
+            warmup_samples = 10 * chunk_size
+            silence = np.zeros(warmup_samples, dtype=np.int16)
+            audio_16k_int16 = np.concatenate((silence, audio_16k_int16))
+
+            # 4. Predict in chunks of 1280 samples (80ms)
             detected = False
             max_scores = {}
             for i in range(0, len(audio_16k_int16), chunk_size):
