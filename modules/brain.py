@@ -18,57 +18,22 @@ class Brain:
         self.api_history = []
         self.recommender = MusicRecommender()
 
-        # Initialize settings from config
+        # Initialize memory state from config (defaults to False if not set)
         self.memory_enabled = getattr(config, 'MEMORY_ENABLED', False)
         self.api_memory_enabled = getattr(config, 'LLM_API_MEMORY_ENABLED', False)
-        self.prompt_format = getattr(config, 'LLM_PROMPT_FORMAT', 'chatml')
-        self.disable_thinking = getattr(config, 'LLM_DISABLE_THINKING', True)
         self.dynamic_prompt = None
 
         if LLM_AVAILABLE:
             try:
-                print(f"🧠 Loading LLM ({config.LLM_MODEL_PATH})...")
-                # Use official chat_format for the specific model architecture
-                chat_format = "gemma" if self.prompt_format == "gemma" else "chatml"
-                
+                print("🧠 Loading LLM...")
                 self.llm = Llama(
                     model_path=config.LLM_MODEL_PATH,
                     n_ctx=config.LLM_CONTEXT_SIZE,
                     n_gpu_layers=config.LLM_GPU_LAYERS,
-                    verbose=False,
-                    chat_format=chat_format
+                    verbose=False
                 )
             except Exception as e:
                 print(f"❌ LLM Error: {e}")
-
-    def _get_stop_tokens(self):
-        """Returns standard stop tokens for the current format."""
-        if self.prompt_format == "gemma":
-            return ["<end_of_turn>", "<start_of_turn>"]
-        return ["<|im_end|>", "<|im_start|>"]
-
-    def _clean_response(self, text):
-        """
-        Refined sanitizer. Strips thinking blocks and structural tags.
-        """
-        import re
-        
-        # 1. Strip thought blocks (handle both complete and incomplete)
-        text = re.sub(r'<(thought|reasoning)>.*?</\1>', '', text, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r'<(thought|reasoning)>.*', '', text, flags=re.DOTALL | re.IGNORECASE)
-        
-        # 2. Strip only structural tags
-        structural_tags = ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>"]
-        for tag in structural_tags:
-            text = text.replace(tag, "")
-        
-        # 3. Clean common chat-format artifacts (only at the very start)
-        text = re.sub(r'^(assistant|model|user|system|obama|butler)[:\s]+', '', text, flags=re.IGNORECASE)
-        
-        # 4. Collapse excessive whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
-        
-        return text
 
     def toggle_memory(self):
         with self.lock:
@@ -81,67 +46,40 @@ class Brain:
         with self.lock:
             self.api_history = []
 
-    def generate_response(self, user_prompt: str, max_tokens=None, personality_prompt: str = None) -> str:
+    def generate_response(self, user_prompt: str, max_tokens=120, personality_prompt: str = None) -> str:
         if not self.llm: return "My brain is offline."
 
-        max_tokens = max_tokens or config.LLM_MAX_TOKENS
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or personality_prompt or config.SYSTEM_PROMPT
-        
-        # Thinking is enabled ONLY if <|think|> is in the system prompt OR if config forces it
-        thinking_enabled = "<|think|>" in base_system or not self.disable_thinking
-        # Remove the token from the actual prompt sent to the model
-        clean_system = base_system.replace("<|think|>", "").strip()
-        
-        if not thinking_enabled:
-            clean_system += " Respond directly and concisely. Do not use <thought> or <reasoning> blocks. Provide your answer immediately."
-        else:
-            # If thinking is enabled, we need to ensure we have enough tokens
-            max_tokens = max(max_tokens, 1024)
-            
-        full_system = f"{clean_system}\nContext: It is {now}.\nIMPORTANT: Respond only with your character's dialogue. Do NOT repeat the user's input. Do NOT use reasoning blocks."
+        full_system = f"{base_system}\nContext: It is {now}."
 
-        # For Gemma format, we merge the system prompt into the first user message for better instruction following
-        if self.prompt_format == "gemma":
-            messages = [{"role": "user", "content": f"System Instruction: {full_system}\n\nUser Message: {user_prompt}"}]
-        else:
-            messages = [
-                {"role": "system", "content": full_system},
-                {"role": "user", "content": user_prompt}
-            ]
-
+        history_str = ""
+        # Only include history if memory is enabled
         if self.memory_enabled:
             with self.lock:
-                # Insert history between system/first user and current user
-                messages.extend(self.history)
-                if self.prompt_format != "gemma":
-                     # messages is already [system, current_user]
-                     # we want [system, ...history, current_user]
-                     messages = [messages[0]] + self.history + [messages[1]]
-                else:
-                     # messages is already [merged_first_user]
-                     # we want [...history, merged_first_user]
-                     messages = self.history + messages
+                for msg in self.history:
+                    history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
 
-        stop_tokens = self._get_stop_tokens()
+        prompt = (
+            f"<|im_start|>system\n{full_system}<|im_end|>\n"
+            f"{history_str}"
+            f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
 
         try:
             with self.lock:
-                output = self.llm.create_chat_completion(
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    stop=stop_tokens,
-                    temperature=0.8,
-                    repeat_penalty=1.5
-                )
+                output = self.llm(prompt, max_tokens=max_tokens, stop=["<|im_end|>", "<|im_start|>"], echo=False)
 
-            text = output['choices'][0]['message']['content']
-            response = self._clean_response(text)
+            text = output['choices'][0]['text']
+            # Clean tags
+            text = text.replace("<|im_start|>", "").replace("<|im_end|>", "")
+            response = text.strip().replace('"', '').replace("Obama:", "")
 
             self._update_history(user_prompt, response)
             return response
         except Exception as e:
-            return f"Brain error: {e}"
+            return f"Thinking error: {e}"
 
     def _update_history(self, user, ai):
         # Do not save to history if memory is disabled
@@ -170,65 +108,49 @@ class Brain:
                 return True
             return False
 
-    def generate_api_response(self, user_prompt: str, max_tokens=None) -> str:
-        """Generate a long-form response intended for the HTTP API."""
-        if not self.llm:
-            return "My brain is offline."
+    def generate_api_response(self, user_prompt: str, max_tokens=200) -> str:
+            """Generate a long-form response intended for the HTTP API."""
+            if not self.llm:
+                return "My brain is offline."
 
-        max_tokens = max_tokens or config.LLM_API_MAX_TOKENS
-        now = datetime.now().strftime('%H:%M')
-        api_system = getattr(config, 'API_SYSTEM_PROMPT', config.SYSTEM_PROMPT)
-        
-        thinking_enabled = "<|think|>" in api_system or not self.disable_thinking
-        clean_system = api_system.replace("<|think|>", "").strip()
-        
-        if not thinking_enabled:
-            clean_system += " Respond directly. Do not use <thought> or <reasoning> blocks. Provide your answer immediately."
-        else:
-            max_tokens = max(max_tokens, 1536)
+            now = datetime.now().strftime('%H:%M')
+            api_system = getattr(config, 'API_SYSTEM_PROMPT', config.SYSTEM_PROMPT)
+            full_system = f"{api_system}\nContext: It is {now}."
 
-        full_system = f"{clean_system}\nContext: It is {now}.\nIMPORTANT: Respond directly. Do NOT repeat the input."
-
-        if self.prompt_format == "gemma":
-            messages = [{"role": "user", "content": f"Instruction: {full_system}\n\nInput: {user_prompt}"}]
-        else:
-            messages = [
-                {"role": "system", "content": full_system},
-                {"role": "user", "content": user_prompt}
-            ]
-
-        if self.api_memory_enabled:
-            with self.lock:
-                if self.prompt_format == "gemma":
-                    messages = self.api_history + messages
-                else:
-                    messages = [messages[0]] + self.api_history + [messages[1]]
-
-        stop_tokens = self._get_stop_tokens()
-
-        try:
-            with self.lock:
-                output = self.llm.create_chat_completion(
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    stop=stop_tokens,
-                    temperature=0.8,
-                    repeat_penalty=1.5
-                )
-
-            text = output['choices'][0]['message']['content']
-            response = self._clean_response(text)
-
+            # 1. Build API history string
+            history_str = ""
             if self.api_memory_enabled:
                 with self.lock:
-                    self.api_history.append({"role": "user", "content": user_prompt})
-                    self.api_history.append({"role": "assistant", "content": response})
-                    if len(self.api_history) > 10:
-                        self.api_history = self.api_history[-10:]
+                    for msg in self.api_history:
+                        history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
 
-            return response
-        except Exception as e:
-            return f"Brain error: {e}"
+            prompt = (
+                f"<|im_start|>system\n{full_system}<|im_end|>\n"
+                f"{history_str}"
+                f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+                f"<|im_start|>assistant\n"
+            )
+
+            try:
+                with self.lock:
+                    output = self.llm(prompt, max_tokens=max_tokens, stop=["<|im_end|>", "<|im_start|>"], echo=False)
+
+                text = output['choices'][0]['text']
+                text = text.replace("<|im_start|>", "").replace("<|im_end|>", "")
+                response = text.strip().replace('"', '').replace("Obama:", "")
+
+                # 2. Update API history
+                if self.api_memory_enabled:
+                    with self.lock:
+                        self.api_history.append({"role": "user", "content": user_prompt})
+                        self.api_history.append({"role": "assistant", "content": response})
+                        # Keep API history slightly shorter (10 messages) to account for longer max_tokens
+                        if len(self.api_history) > 10:
+                            self.api_history = self.api_history[-10:]
+
+                return response
+            except Exception as e:
+                return f"Thinking error: {e}"
 
     def recommend_song(self, description, chat_context=None):
         """
@@ -249,32 +171,38 @@ class Brain:
 
         # 2. Generate Seeds
         # We ask for a list of seeds. We emphasize sticking to the user's request if it's specific.
-        system = (
-            "You are a master music curator. prioritized user artists. "
-            "Generate 5 search terms separated by commas. No thinking blocks."
+        prompt = (
+            f"<|im_start|>system\n"
+            f"You are a master music curator. If the user asks for a specific artist, genre, or vibe, "
+            f"you MUST prioritize it. Generate a list of 5 search terms. "
+            f"If the request is specific (e.g. 'Play Queen'), the terms must be that artist and 4 very similar ones. "
+            f"If the request is vague, be more creative. "
+            f"Output ONLY the terms separated by commas.\n<|im_end|>\n"
+            f"<|im_start|>user\n"
+            f"Context: {context_str}\n"
+            f"User request: {description}\n"
+            f"Give me 5 music seeds.\n<|im_end|>\n"
+            f"<|im_start|>assistant\n"
         )
-        user = f"Context: {context_str}\nUser request: {description}"
-        
+
         try:
             with self.lock:
-                output = self.llm.create_chat_completion(
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user}
-                    ],
+                output = self.llm(
+                    prompt,
                     max_tokens=60,
-                    stop=self._get_stop_tokens() + ["\n"],
+                    stop=["<|im_end|>", "\n"],
+                    echo=False,
                     temperature=0.7
                 )
-            
-            seed_text = output['choices'][0]['message']['content'].strip()
+
+            seed_text = output['choices'][0]['text'].strip()
             llm_seeds = [s.strip() for s in seed_text.split(',') if s.strip()]
-            
+
             # Final seed list: [User's original request] + [LLM's similar/diverse seeds]
             seeds = []
             if description and description != "random music":
                 seeds.append(description)
-            
+
             # Add LLM seeds, avoiding duplicates
             for s in llm_seeds:
                 if s.lower() not in [x.lower() for x in seeds]:
@@ -287,7 +215,7 @@ class Brain:
             if result:
                 print(f"✅ Recommendation: {result}")
                 return result
-            
+
             return None
         except Exception as e:
             print(f"Recommendation error: {e}")
@@ -309,23 +237,27 @@ class Brain:
 
         users_text = ", ".join(active_users) if active_users else "No one else is here."
 
-        system = (
+        prompt = (
+            f"<|im_start|>system\n"
             f"{config.SYSTEM_PROMPT} "
-            f"Hourly update for {now}. Room: {users_text}. No thinking."
+            f"It is currently {now}. You are giving a periodic hourly status update to the room. "
+            f"Mention the current time, acknowledge who is in the room ({users_text}), "
+            f"and briefly summarize or comment on the vibe based on the last minute of conversation if any.\n"
+            f"Keep it brief (under 4 sentences), witty, and butler-like.\n<|im_end|>\n"
+            f"<|im_start|>user\n"
+            f"Recent conversation:\n{transcript_text}\n\nGive the status update.\n<|im_end|>\n"
+            f"<|im_start|>assistant\n"
         )
-        user = f"Recent conversation:\n{transcript_text}"
-        
+
         try:
             with self.lock:
-                output = self.llm.create_chat_completion(
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user}
-                    ],
+                output = self.llm(
+                    prompt,
                     max_tokens=350,
-                    stop=self._get_stop_tokens() + ["\n"]
+                    stop=["<|im_end|>", "\n"],
+                    echo=False
                 )
-            return self._clean_response(output['choices'][0]['message']['content'])
+            return output['choices'][0]['text'].strip().replace('"', '')
         except Exception as e:
             print(f"Report generation error: {e}")
             return f"It is {now}. I am unable to assess the situation due to a processing error."
@@ -360,24 +292,31 @@ class Brain:
             4: "a quadruple kill",
         }.get(count, "an ACE" if count >= 5 else f"{count} kills")
 
-        system = (
+        prompt = (
+            f"<|im_start|>system\n"
             f"{config.SYSTEM_PROMPT} "
-            f"Watching CS2 match. React to {multi_label}. No thinking."
+            f"You are watching a CS2 match and reacting to the kill feed. "
+            f"Be brief (1-2 sentences), entertaining, and in-character. "
+            f"React proportionally: mild for a single kill, increasingly excited for multi-kills and aces.\n"
+            f"<|im_end|>\n"
+            f"<|im_start|>user\n"
+            f"The following just happened — {multi_label}:\n{kill_text}\n"
+            f"Give a short live commentary reaction.\n"
+            f"<|im_end|>\n"
+            f"<|im_start|>assistant\n"
         )
-        user = f"Kill feed:\n{kill_text}"
-        
+
         try:
             with self.lock:
-                output = self.llm.create_chat_completion(
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user}
-                    ],
+                output = self.llm(
+                    prompt,
                     max_tokens=80,
-                    stop=self._get_stop_tokens(),
+                    stop=["<|im_end|>", "<|im_start|>"],
+                    echo=False,
                     temperature=0.85,
                 )
-            return self._clean_response(output['choices'][0]['message']['content'])
+            text = output['choices'][0]['text'].strip()
+            return text.replace('"', '').replace("Obama:", "").strip()
         except Exception as e:
             print(f"Kill commentary error: {e}")
             return ""
@@ -428,24 +367,34 @@ class Brain:
         else:
             context_str = "Comment on the winner and economy neutrally."
 
-        system = (
+        prompt = (
+            f"<|im_start|>system\n"
             f"{config.SYSTEM_PROMPT} "
-            f"CS2 post-round debrief. Winner: {win_team}. No thinking."
+            f"You are providing a post-round CS2 debrief. Be concise (2-3 sentences). "
+            f"{context_str}\n"
+            f"Also briefly comment on the overall score and the economy for next round — "
+            f"who can full-buy, who is forced to eco. Stay in character.\n"
+            f"<|im_end|>\n"
+            f"<|im_start|>user\n"
+            f"Round {round_num} on {map_name} just ended.\n"
+            f"Winner: {win_team} ({condition}). Score: CT {ct_score} — T {t_score}.\n"
+            f"Player stats:\n{player_text}\n"
+            f"Give the round debrief.\n"
+            f"<|im_end|>\n"
+            f"<|im_start|>assistant\n"
         )
-        user = f"Score: CT {ct_score} - T {t_score}\nStats:\n{player_text}"
-        
+
         try:
             with self.lock:
-                output = self.llm.create_chat_completion(
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user}
-                    ],
+                output = self.llm(
+                    prompt,
                     max_tokens=150,
-                    stop=self._get_stop_tokens(),
+                    stop=["<|im_end|>", "<|im_start|>"],
+                    echo=False,
                     temperature=0.75,
                 )
-            return self._clean_response(output['choices'][0]['message']['content'])
+            text = output['choices'][0]['text'].strip()
+            return text.replace('"', '').replace("Obama:", "").strip()
         except Exception as e:
             print(f"Round report error: {e}")
             return ""
