@@ -47,7 +47,7 @@ class VoiceHandler:
                 personality_prompt = PERSONALITIES[p_key]['prompt']
 
             response = self.bot.brain.generate_response(
-                content,
+                f"User {user} says: {content}",
                 personality_prompt=personality_prompt
             )
             self.bot.say_async(response, user=user)
