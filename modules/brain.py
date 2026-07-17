@@ -15,12 +15,10 @@ class Brain:
         self.llm = None
         self.lock = threading.Lock()
         self.history = []
-        self.api_history = []
         self.recommender = MusicRecommender()
 
         # Initialize memory state from config (defaults to False if not set)
         self.memory_enabled = getattr(config, 'MEMORY_ENABLED', False)
-        self.api_memory_enabled = getattr(config, 'LLM_API_MEMORY_ENABLED', False)
         self.dynamic_prompt = None
 
         if LLM_AVAILABLE:
@@ -42,9 +40,7 @@ class Brain:
                 self.history = [] # Optional: clear history when disabling?
             return self.memory_enabled
 
-    def reset_api_memory(self):
-        with self.lock:
-            self.api_history = []
+
 
     def generate_response(self, user_prompt: str, max_tokens=120) -> str:
         if not self.llm: return "My brain is offline."
@@ -108,49 +104,7 @@ class Brain:
                 return True
             return False
 
-    def generate_api_response(self, user_prompt: str, max_tokens=200) -> str:
-            """Generate a long-form response intended for the HTTP API."""
-            if not self.llm:
-                return "My brain is offline."
 
-            now = datetime.now().strftime('%H:%M')
-            api_system = getattr(config, 'API_SYSTEM_PROMPT', config.SYSTEM_PROMPT)
-            full_system = f"{api_system}\nContext: It is {now}."
-
-            # 1. Build API history string
-            history_str = ""
-            if self.api_memory_enabled:
-                with self.lock:
-                    for msg in self.api_history:
-                        history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
-
-            prompt = (
-                f"<|im_start|>system\n{full_system}<|im_end|>\n"
-                f"{history_str}"
-                f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
-                f"<|im_start|>assistant\n"
-            )
-
-            try:
-                with self.lock:
-                    output = self.llm(prompt, max_tokens=max_tokens, stop=["<|im_end|>", "<|im_start|>"], echo=False)
-
-                text = output['choices'][0]['text']
-                text = text.replace("<|im_start|>", "").replace("<|im_end|>", "")
-                response = text.strip().replace('"', '').replace("Obama:", "")
-
-                # 2. Update API history
-                if self.api_memory_enabled:
-                    with self.lock:
-                        self.api_history.append({"role": "user", "content": user_prompt})
-                        self.api_history.append({"role": "assistant", "content": response})
-                        # Keep API history slightly shorter (10 messages) to account for longer max_tokens
-                        if len(self.api_history) > 10:
-                            self.api_history = self.api_history[-10:]
-
-                return response
-            except Exception as e:
-                return f"Thinking error: {e}"
 
     def recommend_song(self, description, chat_context=None):
         """
@@ -262,139 +216,4 @@ class Brain:
             print(f"Report generation error: {e}")
             return f"It is {now}. I am unable to assess the situation due to a processing error."
 
-    def generate_kill_commentary(self, kills: list) -> str:
-        """
-        Generates short, entertaining CS2 kill-feed commentary.
-        `kills` is a list of kill-event dicts produced by CS2GSI.
-        Handles single kills through aces in one call.
-        """
-        if not self.llm:
-            return ""
 
-        count = len(kills)
-        # Build a readable summary of what happened
-        lines = []
-        for k in kills:
-            killer = k.get('killer', 'Someone')
-            victim = k.get('victim') or ''
-            weapon = k.get('weapon', 'their weapon')
-            hs = k.get('headshot', False)
-            victim_part = f" killing {victim}" if victim else ""
-            hs_part = " (headshot)" if hs else ""
-            lines.append(f"{killer} got a kill with {weapon}{victim_part}{hs_part}")
-
-        kill_text = "\n".join(lines)
-
-        multi_label = {
-            1: "a kill",
-            2: "a double kill",
-            3: "a triple kill",
-            4: "a quadruple kill",
-        }.get(count, "an ACE" if count >= 5 else f"{count} kills")
-
-        prompt = (
-            f"<|im_start|>system\n"
-            f"{config.SYSTEM_PROMPT} "
-            f"You are watching a CS2 match and reacting to the kill feed. "
-            f"Be brief (1-2 sentences), entertaining, and in-character. "
-            f"React proportionally: mild for a single kill, increasingly excited for multi-kills and aces.\n"
-            f"<|im_end|>\n"
-            f"<|im_start|>user\n"
-            f"The following just happened — {multi_label}:\n{kill_text}\n"
-            f"Give a short live commentary reaction.\n"
-            f"<|im_end|>\n"
-            f"<|im_start|>assistant\n"
-        )
-
-        try:
-            with self.lock:
-                output = self.llm(
-                    prompt,
-                    max_tokens=80,
-                    stop=["<|im_end|>", "<|im_start|>"],
-                    echo=False,
-                    temperature=0.85,
-                )
-            text = output['choices'][0]['text'].strip()
-            return text.replace('"', '').replace("Obama:", "").strip()
-        except Exception as e:
-            print(f"Kill commentary error: {e}")
-            return ""
-
-    def generate_round_report(self, report: dict) -> str:
-        """
-        Generates an end-of-round economic and performance report.
-        `report` is the dict produced by CS2GSI._fire_round_end.
-        """
-        if not self.llm:
-            return ""
-
-        win_team = report.get('win_team', 'unknown')
-        condition = report.get('win_condition', '')
-        ct_score = report.get('ct_score', 0)
-        t_score = report.get('t_score', 0)
-        map_name = report.get('map', 'unknown')
-        round_num = report.get('round_number', 0)
-        players = report.get('players', [])
-
-        # Build compact player table
-        player_lines = []
-        for p in sorted(players, key=lambda x: x.get('kills', 0), reverse=True):
-            name = p.get('name', '?')
-            team = p.get('team', '?')
-            kda = f"{p.get('kills',0)}/{p.get('deaths',0)}/{p.get('assists',0)}"
-            eco = p.get('eco_label', '?')
-            money = p.get('money', 0)
-            player_lines.append(f"  {name} [{team}] KDA:{kda} eco:{eco} ${money:,}")
-
-        player_text = "\n".join(player_lines) if player_lines else "No player data."
-
-        local_team = report.get('local_team', '')
-        streak = report.get('streak', 0)
-        streak_team = report.get('streak_team', '')
-
-        # Build dynamic context about how we are doing
-        context_str = ""
-        if local_team:
-            if streak >= 3 and streak_team != local_team:
-                context_str = f"Your team ({local_team}) is losing badly (the enemy {streak_team} is on a {streak} round win streak). Be HIGHLY sarcastic, cynical, and brutally mock your team's terrible performance."
-            elif streak_team == local_team and streak >= 2:
-                context_str = f"Your team ({local_team}) is on a {streak} round win streak! Hype them up enthusiastically!"
-            elif win_team == local_team:
-                context_str = f"Your team ({local_team}) won the round! Hype them up!"
-            else:
-                context_str = f"Your team ({local_team}) lost the round. Give a sarcastic remark about their performance."
-        else:
-            context_str = "Comment on the winner and economy neutrally."
-
-        prompt = (
-            f"<|im_start|>system\n"
-            f"{config.SYSTEM_PROMPT} "
-            f"You are providing a post-round CS2 debrief. Be concise (2-3 sentences). "
-            f"{context_str}\n"
-            f"Also briefly comment on the overall score and the economy for next round — "
-            f"who can full-buy, who is forced to eco. Stay in character.\n"
-            f"<|im_end|>\n"
-            f"<|im_start|>user\n"
-            f"Round {round_num} on {map_name} just ended.\n"
-            f"Winner: {win_team} ({condition}). Score: CT {ct_score} — T {t_score}.\n"
-            f"Player stats:\n{player_text}\n"
-            f"Give the round debrief.\n"
-            f"<|im_end|>\n"
-            f"<|im_start|>assistant\n"
-        )
-
-        try:
-            with self.lock:
-                output = self.llm(
-                    prompt,
-                    max_tokens=150,
-                    stop=["<|im_end|>", "<|im_start|>"],
-                    echo=False,
-                    temperature=0.75,
-                )
-            text = output['choices'][0]['text'].strip()
-            return text.replace('"', '').replace("Obama:", "").strip()
-        except Exception as e:
-            print(f"Round report error: {e}")
-            return ""

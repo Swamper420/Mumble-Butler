@@ -18,8 +18,6 @@ from modules.brain import Brain
 from modules.ears import Ear
 from modules.voice import Voice
 from modules.audio_manager import AudioManager
-from modules.llm_api import create_llm_api_server
-from modules.voice_api import create_voice_api_server
 
 # Logic Handlers
 from handlers.text import TextHandler
@@ -70,8 +68,6 @@ class MadnessBot:
         self.recent_transcripts = []
         self.transcript_lock = threading.Lock()
         self.background_tasks = set()
-        self.api_servers = []
-        self.api_threads = []
         
 
 
@@ -133,7 +129,6 @@ class MadnessBot:
         """Main application loop."""
         self.logger.info("🚀 Starting Bot...")
         threading.Thread(target=self._start_async_loop, daemon=True).start()
-        self._start_api_servers()
 
 
 
@@ -177,47 +172,12 @@ class MadnessBot:
         self.logger.info("Shutting down...")
         self.running = False
         self.save_stats()
-        self._stop_api_servers()
 
         if self.mumble:
             self.mumble.stop()
         # The async loop and api threads are daemonic or handled via join
         self.logger.info("Cleanup complete.")
 
-    def _start_api_servers(self):
-        if getattr(config, "START_LLM_API_WITH_BOT", True):
-            try:
-                llm_server = create_llm_api_server(brain=self.brain)
-                llm_thread = threading.Thread(target=llm_server.serve_forever, daemon=True)
-                llm_thread.start()
-                self.api_servers.append(llm_server)
-                self.api_threads.append(llm_thread)
-                self.logger.info(f"🌐 LLM API server started on {config.LLM_API_HOST}:{config.LLM_API_PORT}")
-            except Exception as e:
-                self.logger.error(f"⚠️ Failed to start LLM API server: {e}")
-
-        if getattr(config, "START_VOICE_API_WITH_BOT", True):
-            try:
-                voice_server = create_voice_api_server(ear=self.ear)
-                voice_thread = threading.Thread(target=voice_server.serve_forever, daemon=True)
-                voice_thread.start()
-                self.api_servers.append(voice_server)
-                self.api_threads.append(voice_thread)
-                self.logger.info(f"🌐 Voice API server started on {config.VOICE_API_HOST}:{config.VOICE_API_PORT}")
-            except Exception as e:
-                self.logger.error(f"⚠️ Failed to start Voice API server: {e}")
-
-    def _stop_api_servers(self):
-        for server in self.api_servers:
-            try:
-                server.shutdown()
-                server.server_close()
-            except Exception as e:
-                self.logger.error(f"⚠️ API server shutdown error: {e}")
-        self.api_servers.clear()
-        for thread in self.api_threads:
-            thread.join(timeout=config.API_THREAD_SHUTDOWN_TIMEOUT_SECONDS)
-        self.api_threads.clear()
 
     def _start_async_loop(self):
         asyncio.set_event_loop(self.loop)

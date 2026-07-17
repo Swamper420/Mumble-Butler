@@ -37,11 +37,6 @@ def _load_bot_module():
     fake_audio_manager = types.ModuleType("modules.audio_manager")
     fake_audio_manager.AudioManager = type("AudioManager", (), {})
 
-    fake_llm_api = types.ModuleType("modules.llm_api")
-    fake_llm_api.create_llm_api_server = lambda brain: None
-
-    fake_voice_api = types.ModuleType("modules.voice_api")
-    fake_voice_api.create_voice_api_server = lambda ear: None
 
     fake_text = types.ModuleType("handlers.text")
     fake_text.TextHandler = type("TextHandler", (), {})
@@ -59,8 +54,6 @@ def _load_bot_module():
         "modules.ears": fake_ears,
         "modules.voice": fake_voice,
         "modules.audio_manager": fake_audio_manager,
-        "modules.llm_api": fake_llm_api,
-        "modules.voice_api": fake_voice_api,
         "handlers.text": fake_text,
         "handlers.voice": fake_voice_handler,
     }

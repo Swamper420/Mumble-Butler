@@ -23,7 +23,6 @@ LLM_MODEL_PATH = os.getenv("LLM_MODEL_PATH", "models/gemma-3-8b-it-q4_k_m.gguf")
 LLM_PROMPT_FORMAT = os.getenv("LLM_PROMPT_FORMAT", "gemma") # "gemma" or "chatml"
 LLM_DISABLE_THINKING = os.getenv("LLM_DISABLE_THINKING", "True").lower() == "true"
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
-LLM_API_MAX_TOKENS = int(os.getenv("LLM_API_MAX_TOKENS", "2048"))
 
 
 # --- AI CONFIG ---
@@ -37,31 +36,10 @@ LLM_GPU_LAYERS = int(os.getenv("LLM_GPU_LAYERS", "-1"))
 ACTIVATION_KEYWORDS = os.getenv("ACTIVATION_KEYWORDS", "obama,opama,opal,opa").split(",")
 MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "True").lower() == "true"
 
-LLM_API_HOST = os.getenv("LLM_API_HOST", "127.0.0.1")
-LLM_API_PORT = int(os.getenv("LLM_API_PORT", "8080"))
-LLM_API_DEFAULT_MAX_TOKENS = int(os.getenv("LLM_API_DEFAULT_MAX_TOKENS", "150"))
-LLM_API_LOG_REQUESTS = os.getenv("LLM_API_LOG_REQUESTS", "False").lower() == "true"
-
-VOICE_API_HOST = os.getenv("VOICE_API_HOST", "127.0.0.1")
-VOICE_API_PORT = int(os.getenv("VOICE_API_PORT", "8081"))
-LLM_API_MEMORY_ENABLED = os.getenv("LLM_API_MEMORY_ENABLED", "True").lower() == "true"
-VOICE_API_LOG_REQUESTS = os.getenv("VOICE_API_LOG_REQUESTS", "False").lower() == "true"
-
-START_LLM_API_WITH_BOT = os.getenv("START_LLM_API_WITH_BOT", "True").lower() == "true"
-START_VOICE_API_WITH_BOT = os.getenv("START_VOICE_API_WITH_BOT", "True").lower() == "true"
-API_THREAD_SHUTDOWN_TIMEOUT_SECONDS = int(os.getenv("API_THREAD_SHUTDOWN_TIMEOUT_SECONDS", "2"))
-
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", (
     "You are 'Obama', a suave and savvy digital butler from the 2000s. "
     "You are impeccable, polite, and efficiently helpful. "
     "Keep your responses short and concise — ideally one or two sentences. "
-    "Always respond in ENGLISH."
-))
-
-API_SYSTEM_PROMPT = os.getenv("API_SYSTEM_PROMPT", (
-    "You are 'Obama', a suave and savvy digital butler from the 2000s. "
-    "You are impeccable, polite, and efficiently helpful. "
-    "Provide thorough, detailed, and well-structured answers. "
     "Always respond in ENGLISH."
 ))
 
