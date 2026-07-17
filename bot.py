@@ -232,19 +232,21 @@ class MadnessBot:
             if self.mumble and self.mumble.users:
                 active_users = [u['name'] for u in self.mumble.users.values()
                                 if u['name'] not in config.IGNORED_USERS and u['name'] != config.BOT_USERNAME]
-                one_minute_ago = time.time() - 60
-                with self.transcript_lock:
-                    self.recent_transcripts = [t for t in self.recent_transcripts if t['time'] > one_minute_ago]
-                    relevant_transcripts = self.recent_transcripts[:]
 
-                report = await self.loop.run_in_executor(
-                    self.executor,
-                    self.brain.generate_hourly_report,
-                    active_users,
-                    relevant_transcripts
-                )
-                if report:
-                    self.say_async(report)
+                if active_users:
+                    one_minute_ago = time.time() - 60
+                    with self.transcript_lock:
+                        self.recent_transcripts = [t for t in self.recent_transcripts if t['time'] > one_minute_ago]
+                        relevant_transcripts = self.recent_transcripts[:]
+
+                    report = await self.loop.run_in_executor(
+                        self.executor,
+                        self.brain.generate_hourly_report,
+                        active_users,
+                        relevant_transcripts
+                    )
+                    if report:
+                        self.say_async(report)
             await asyncio.sleep(3600)
 
     def process_voice_command(self, user, raw_audio, stream):
