@@ -1,15 +1,43 @@
 import re
 import config
+try:
+    from rapidfuzz import fuzz as _fuzz
+    _FUZZY_AVAILABLE = True
+except ImportError:
+    _FUZZY_AVAILABLE = False
 
 
 class VoiceHandler:
     def __init__(self, bot):
         self.bot = bot
-        # Pre-compile the activation pattern for efficiency
-        sorted_keywords = sorted(config.ACTIVATION_KEYWORDS, key=len, reverse=True)
+        self.sorted_keywords = sorted(config.ACTIVATION_KEYWORDS, key=len, reverse=True)
+        # Pre-compile the exact activation pattern for fast-path matching
         self.activation_pattern = re.compile(
-            r"^(" + "|".join(re.escape(k.lower()) for k in sorted_keywords) + r")\b"
+            r"^(" + "|".join(re.escape(k.lower()) for k in self.sorted_keywords) + r")\b"
         )
+
+    def _detect_activation(self, clean_text):
+        """
+        Returns the command content (text after the wake word) if an activation
+        keyword is found, or None if not.
+
+        Detection order:
+        1. Exact prefix regex — fastest, zero false positives.
+        2. Fuzzy word scan   — catches Whisper mistranscriptions (needs rapidfuzz).
+        """
+        # 1. Exact match
+        match = self.activation_pattern.search(clean_text)
+        if match:
+            return re.sub(self.activation_pattern, "", clean_text, count=1).strip()
+
+        # 2. Fuzzy fallback
+        if _FUZZY_AVAILABLE:
+            words = clean_text.split()
+            for i, word in enumerate(words):
+                if any(_fuzz.ratio(word, kw) >= 82 for kw in self.sorted_keywords):
+                    return " ".join(words[i + 1:]).strip()
+
+        return None
 
     def handle(self, user, text):
         """
@@ -17,13 +45,10 @@ class VoiceHandler:
         """
         clean_text = re.sub(r'[^\w\s]', '', text).lower().strip()
 
-        # 1. Check for Activation Keyword
-        match = self.activation_pattern.search(clean_text)
-        if not match:
+        # 1. Check for Activation Keyword (exact, then fuzzy)
+        content = self._detect_activation(clean_text)
+        if content is None:
             return False
-
-        # Remove the trigger word to get the actual command content
-        content = re.sub(self.activation_pattern, "", clean_text, count=1).strip()
 
         # 2. Check for shut-up keyword before anything else
         shutup_keywords = getattr(config, 'SHUTUP_KEYWORDS', [])

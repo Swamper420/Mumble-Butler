@@ -31,11 +31,15 @@ class Ear:
         # 2. Resample 48k (Mumble) -> 16k (Whisper)
         audio_16k = resample_audio(audio_float, 48000, 16000)
 
+        # Hint Whisper toward the activation keywords so they transcribe reliably
+        keyword_hint = ", ".join(config.ACTIVATION_KEYWORDS)
+
         # 3. Transcribe
         segments, _ = self.model.transcribe(
             audio_16k,
             language=config.WHISPER_LANGUAGE,
             beam_size=5,
-            task="transcribe"
+            task="transcribe",
+            initial_prompt=keyword_hint
         )
         return " ".join([s.text for s in segments]).strip()

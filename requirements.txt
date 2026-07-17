@@ -4,3 +4,4 @@ llama-cpp-python
 kokoro
 numpy
 python-dotenv
+rapidfuzz
