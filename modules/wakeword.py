@@ -15,6 +15,11 @@ class WakewordDetector:
         
         if self.enabled:
             try:
+                # Ensure all required base models (melspectrogram, embedding, etc.) are downloaded
+                import openwakeword.utils
+                print("📥 Downloading openWakeWord base models if missing...")
+                openwakeword.utils.download_models()
+
                 print(f"🎙️ Loading openWakeWord (builtins: {config.WAKEWORD_BUILTIN_MODELS}, custom: {config.WAKEWORD_MODEL_PATHS})...")
                 # Initialize openwakeword model
                 models_to_load = []
