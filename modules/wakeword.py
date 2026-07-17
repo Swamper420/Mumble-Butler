@@ -59,6 +59,7 @@ class WakewordDetector:
             # 4. Predict in chunks of 1280 samples (80ms)
             chunk_size = 1280
             detected = False
+            max_scores = {}
             for i in range(0, len(audio_16k_int16), chunk_size):
                 chunk = audio_16k_int16[i:i + chunk_size]
                 if len(chunk) < chunk_size:
@@ -67,14 +68,13 @@ class WakewordDetector:
                 
                 prediction = self.model.predict(chunk)
                 
-                # Check if any model score exceeds the threshold
+                # Track max scores for debugging
                 for model_name, score in prediction.items():
+                    max_scores[model_name] = max(max_scores.get(model_name, 0.0), score)
                     if score >= config.WAKEWORD_THRESHOLD:
                         detected = True
-                        break
-                if detected:
-                    break
 
+            print(f"🎙️ [openWakeWord] Max scores: {max_scores} | Max Amp: {np.abs(audio_16k_int16).max() if len(audio_16k_int16) > 0 else 0} | Detected: {detected}")
             return detected
         except Exception as e:
             print(f"❌ Error in wakeword detection: {e}")
