@@ -53,6 +53,17 @@ class WakewordDetector:
             # 3. Convert float32 back to int16 (required by openwakeword)
             audio_16k_int16 = (audio_16k_float * 32767.0).clip(-32768, 32767).astype(np.int16)
 
+            # Debug save to WAV file
+            try:
+                import wave
+                with wave.open("debug_wakeword.wav", "wb") as wav_file:
+                    wav_file.setnchannels(1)
+                    wav_file.setsampwidth(2)
+                    wav_file.setframerate(16000)
+                    wav_file.writeframes(audio_16k_int16.tobytes())
+            except Exception as wave_err:
+                print(f"❌ Failed to save debug WAV: {wave_err}")
+
             # Reset model state/accumulator between predictions
             self.model.reset()
 
@@ -60,13 +71,13 @@ class WakewordDetector:
             chunk_size = 1280
             warmup_samples = 10 * chunk_size
             silence = np.zeros(warmup_samples, dtype=np.int16)
-            audio_16k_int16 = np.concatenate((silence, audio_16k_int16))
+            audio_for_model = np.concatenate((silence, audio_16k_int16))
 
             # 4. Predict in chunks of 1280 samples (80ms)
             detected = False
             max_scores = {}
-            for i in range(0, len(audio_16k_int16), chunk_size):
-                chunk = audio_16k_int16[i:i + chunk_size]
+            for i in range(0, len(audio_for_model), chunk_size):
+                chunk = audio_for_model[i:i + chunk_size]
                 if len(chunk) < chunk_size:
                     # Pad last chunk with zeros
                     chunk = np.pad(chunk, (0, chunk_size - len(chunk)))
