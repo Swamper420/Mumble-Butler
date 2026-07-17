@@ -37,7 +37,7 @@ class TextHandler:
             triggers.append("?clear")
             triggers.append("?prompt [text]")
             triggers.append("?undo")
-            
+
             help_text = "<b>Available Commands:</b><br/>" + ", ".join(triggers)
             help_text += "<br/><i>Use ?status to check system health.</i>"
             self.bot.send_chat(help_text)
