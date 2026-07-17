@@ -5,3 +5,5 @@ kokoro
 numpy
 python-dotenv
 rapidfuzz
+openwakeword
+onnxruntime

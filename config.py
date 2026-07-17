@@ -36,6 +36,12 @@ LLM_GPU_LAYERS = int(os.getenv("LLM_GPU_LAYERS", "-1"))
 ACTIVATION_KEYWORDS = os.getenv("ACTIVATION_KEYWORDS", "obama,opama,opal,opa").split(",")
 MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "True").lower() == "true"
 
+# --- WAKEWORD CONFIG ---
+WAKEWORD_LIBRARY = os.getenv("WAKEWORD_LIBRARY", "openwakeword")
+WAKEWORD_MODEL_PATHS = [p.strip() for p in os.getenv("WAKEWORD_MODEL_PATHS", "").split(",") if p.strip()]
+WAKEWORD_BUILTIN_MODELS = [m.strip() for m in os.getenv("WAKEWORD_BUILTIN_MODELS", "hey_jarvis").split(",") if m.strip()]
+WAKEWORD_THRESHOLD = float(os.getenv("WAKEWORD_THRESHOLD", "0.5"))
+
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", (
     "You are 'Obama', a suave and savvy digital butler from the 2000s. "
     "You are impeccable, polite, and efficiently helpful. "

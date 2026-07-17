@@ -18,6 +18,7 @@ from modules.brain import Brain
 from modules.ears import Ear
 from modules.voice import Voice
 from modules.audio_manager import AudioManager
+from modules.wakeword import WakewordDetector
 
 # Logic Handlers
 from handlers.text import TextHandler
@@ -44,6 +45,7 @@ class MadnessBot:
         self.ear = Ear()
         self.voice = Voice()
         self.audio_manager = AudioManager()
+        self.wakeword_detector = WakewordDetector()
 
         # Logic Handlers
         self.text_handler = TextHandler(self)
@@ -252,6 +254,8 @@ class MadnessBot:
     def process_voice_command(self, user, raw_audio, stream):
         """Transcribes audio and routes to VoiceHandler."""
         try:
+            if not self.wakeword_detector.has_wakeword(raw_audio):
+                return
             text = self.ear.transcribe(raw_audio)
             if text:
                 self.logger.info(f"[{user}]: {text}")
@@ -351,6 +355,7 @@ class MadnessBot:
             "LLM": "Online" if self.brain.llm else "Offline",
             "STT": "Ready" if self.ear else "Error",
             "TTS": "Ready" if self.voice else "Error",
+            "Wakeword": "Active" if self.wakeword_detector.enabled else "Bypassed",
             "Listening": "ON" if self.listening_enabled else "OFF",
             "Memory": "ON" if self.brain.memory_enabled else "OFF",
         }
