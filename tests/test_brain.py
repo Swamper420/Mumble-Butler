@@ -27,14 +27,15 @@ class TestGenerateResponseStopTokens(unittest.TestCase):
 
     def _captured_stop_tokens(self):
         """Run generate_response and return the stop list passed to self.llm."""
-        llm_mock = MagicMock(return_value={
-            "choices": [{"text": "Line one.\nLine two.\nLine three."}]
-        })
+        llm_mock = MagicMock()
+        llm_mock.create_chat_completion.return_value = {
+            "choices": [{"message": {"content": "Line one.\nLine two.\nLine three."}}]
+        }
 
         brain = _make_brain_with_mock_llm(llm_mock)
         brain.generate_response("Hello")
 
-        _args, kwargs = llm_mock.call_args
+        _args, kwargs = llm_mock.create_chat_completion.call_args
         return kwargs.get("stop", [])
 
     def test_newline_not_in_stop_tokens(self):

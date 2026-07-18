@@ -89,28 +89,26 @@ class Brain:
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
         full_system = f"{base_system}\nContext: It is {now}."
 
-        history_str = ""
-        # Only include history if memory is enabled
+        messages = [
+            {"role": "system", "content": full_system}
+        ]
         if self.memory_enabled:
             with self.lock:
                 for msg in self.history:
-                    role_start = tags['user_start'] if msg['role'] == 'user' else tags['assistant_start']
-                    role_end = tags['user_end'] if msg['role'] == 'user' else tags['assistant_end']
-                    history_str += f"{role_start}{msg['content']}{role_end}"
+                    messages.append({"role": msg["role"], "content": msg["content"]})
 
         formatted_prompt = self._format_user_prompt(user_prompt)
-        prompt = (
-            f"{tags['system_start']}{full_system}{tags['system_end']}"
-            f"{history_str}"
-            f"{tags['user_start']}{formatted_prompt}{tags['user_end']}"
-            f"{tags['assistant_start']}"
-        )
+        messages.append({"role": "user", "content": formatted_prompt})
 
         try:
             with self.lock:
-                output = self.llm(prompt, max_tokens=max_tokens, stop=tags['stop'], echo=False)
+                output = self.llm.create_chat_completion(
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    stop=tags['stop']
+                )
 
-            text = output['choices'][0]['text']
+            text = output['choices'][0]['message']['content']
             # Clean tags
             for t in ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>"]:
                 text = text.replace(t, "")
@@ -132,36 +130,36 @@ class Brain:
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
         full_system = f"{base_system}\nContext: It is {now}."
 
-        history_str = ""
+        messages = [
+            {"role": "system", "content": full_system}
+        ]
         if self.memory_enabled:
             with self.lock:
                 for msg in self.history:
-                    role_start = tags['user_start'] if msg['role'] == 'user' else tags['assistant_start']
-                    role_end = tags['user_end'] if msg['role'] == 'user' else tags['assistant_end']
-                    history_str += f"{role_start}{msg['content']}{role_end}"
+                    messages.append({"role": msg["role"], "content": msg["content"]})
 
         formatted_prompt = self._format_user_prompt(user_prompt)
-        prompt = (
-            f"{tags['system_start']}{full_system}{tags['system_end']}"
-            f"{history_str}"
-            f"{tags['user_start']}{formatted_prompt}{tags['user_end']}"
-            f"{tags['assistant_start']}"
-        )
+        messages.append({"role": "user", "content": formatted_prompt})
 
         try:
             complete_response = ""
             in_think_block = False
             with self.lock:
-                output = self.llm(
-                    prompt,
+                output = self.llm.create_chat_completion(
+                    messages=messages,
                     max_tokens=max_tokens,
                     stop=tags['stop'],
-                    echo=False,
                     stream=True
                 )
             
             for chunk in output:
-                token = chunk['choices'][0]['text']
+                choices = chunk.get('choices', [])
+                if not choices:
+                    continue
+                delta = choices[0].get('delta', {})
+                token = delta.get('content', '')
+                if not token:
+                    continue
                 for t in ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>"]:
                     token = token.replace(t, "")
                 token = token.replace("Obama:", "")
@@ -287,51 +285,54 @@ class Brain:
         no_think = " /no_think" if config.LLM_DISABLE_THINKING else ""
         
         tags = self._get_tags()
-        # 2. Build structured prompt
-        prompt = (
-            f"{tags['system_start']}"
-            f"You are a master music recommender and curator bot.\n"
-            f"Your job is to analyze the user's music request, identify the intent and vibe, and return structured recommendations.\n"
-            f"Analyze the user request and recent chat context (if provided).\n"
-            f"Determine the intent:\n"
-            f"- SPECIFIC: The user is asking for a specific artist, song, or album (e.g. 'play Queen', 'play Yesterday').\n"
-            f"- GENRE_MOOD: The user is asking for a genre, mood, activity, or era (e.g. 'chill lofi', 'workout music', '80s pop').\n"
-            f"- OPEN: The user is asking for a general/random recommendation or didn't specify details.\n\n"
-            f"Then, generate a list of 5-7 real, existing songs (Artist - Song Title) that best match this request. "
-            f"If the request is SPECIFIC to a song, that exact song MUST be the first recommendation. "
-            f"If the request is SPECIFIC to an artist, the recommendations must be their most popular tracks or highly similar songs.\n"
-            f"If the request is GENRE_MOOD, recommendations must fit the mood/genre/energy level.\n"
-            f"If the request is OPEN, use the recent conversation vibe (if any) to curate something suitable, or suggest a high-quality track from any good genre.\n\n"
-            f"Respond strictly in this format, with no thinking blocks or extra conversational text:\n"
-            f"[INTENT]\n"
-            f"<SPECIFIC, GENRE_MOOD, or OPEN>\n"
-            f"[VIBE]\n"
-            f"<Brief description of the detected vibe/mood/genre>\n"
-            f"[RECOMMENDATIONS]\n"
-            f"<Artist 1> - <Song Title 1>\n"
-            f"<Artist 2> - <Song Title 2>\n"
-            f"<Artist 3> - <Song Title 3>\n"
-            f"<Artist 4> - <Song Title 4>\n"
-            f"<Artist 5> - <Song Title 5>\n"
-            f"{tags['system_end']}"
-            f"{tags['user_start']}"
+        
+        system_content = (
+            "You are a master music recommender and curator bot.\n"
+            "Your job is to analyze the user's music request, identify the intent and vibe, and return structured recommendations.\n"
+            "Analyze the user request and recent chat context (if provided).\n"
+            "Determine the intent:\n"
+            "- SPECIFIC: The user is asking for a specific artist, song, or album (e.g. 'play Queen', 'play Yesterday').\n"
+            "- GENRE_MOOD: The user is asking for a genre, mood, activity, or era (e.g. 'chill lofi', 'workout music', '80s pop').\n"
+            "- OPEN: The user is asking for a general/random recommendation or didn't specify details.\n\n"
+            "Then, generate a list of 5-7 real, existing songs (Artist - Song Title) that best match this request. "
+            "If the request is SPECIFIC to a song, that exact song MUST be the first recommendation. "
+            "If the request is SPECIFIC to an artist, the recommendations must be their most popular tracks or highly similar songs.\n"
+            "If the request is GENRE_MOOD, recommendations must fit the mood/genre/energy level.\n"
+            "If the request is OPEN, use the recent conversation vibe (if any) to curate something suitable, or suggest a high-quality track from any good genre.\n\n"
+            "Respond strictly in this format, with no thinking blocks or extra conversational text:\n"
+            "[INTENT]\n"
+            "<SPECIFIC, GENRE_MOOD, or OPEN>\n"
+            "[VIBE]\n"
+            "<Brief description of the detected vibe/mood/genre>\n"
+            "[RECOMMENDATIONS]\n"
+            "<Artist 1> - <Song Title 1>\n"
+            "<Artist 2> - <Song Title 2>\n"
+            "<Artist 3> - <Song Title 3>\n"
+            "<Artist 4> - <Song Title 4>\n"
+            "<Artist 5> - <Song Title 5>"
+        )
+
+        user_content = (
             f"Context: {context_str}\n"
             f"User request: {description}\n"
-            f"Generate recommendations.{no_think}\n{tags['user_end']}"
-            f"{tags['assistant_start']}"
+            f"Generate recommendations.{no_think}"
         )
+
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content}
+        ]
 
         try:
             with self.lock:
-                output = self.llm(
-                    prompt,
+                output = self.llm.create_chat_completion(
+                    messages=messages,
                     max_tokens=250,
                     stop=tags['stop'],
-                    echo=False,
                     temperature=0.6
                 )
 
-            llm_text = self._strip_thinking(output['choices'][0]['text'].strip())
+            llm_text = self._strip_thinking(output['choices'][0]['message']['content'].strip())
             intent, vibe, recommendations = self.parse_recommendation_output(llm_text)
             
             print(f"🎵 Recommendation Intent: {intent}, Vibe: {vibe}")
@@ -392,27 +393,27 @@ class Brain:
         no_think = " /no_think" if config.LLM_DISABLE_THINKING else ""
 
         tags = self._get_tags()
-        prompt = (
-            f"{tags['system_start']}"
+        system_content = (
             f"{config.SYSTEM_PROMPT} "
             f"It is currently {now}. You are giving a periodic hourly status update to the room. "
             f"Mention the current time, acknowledge who is in the room ({users_text}), "
             f"and briefly summarize or comment on the vibe based on the last minute of conversation if any.\n"
-            f"Keep it brief (under 4 sentences), witty, and butler-like.\n{tags['system_end']}"
-            f"{tags['user_start']}"
-            f"Recent conversation:\n{transcript_text}\n\nGive the status update.{no_think}\n{tags['user_end']}"
-            f"{tags['assistant_start']}"
+            f"Keep it brief (under 4 sentences), witty, and butler-like."
         )
+        user_content = f"Recent conversation:\n{transcript_text}\n\nGive the status update.{no_think}"
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content}
+        ]
 
         try:
             with self.lock:
-                output = self.llm(
-                    prompt,
+                output = self.llm.create_chat_completion(
+                    messages=messages,
                     max_tokens=350,
-                    stop=tags['stop'],
-                    echo=False
+                    stop=tags['stop']
                 )
-            return self._strip_thinking(output['choices'][0]['text'].strip().replace('"', ''))
+            return self._strip_thinking(output['choices'][0]['message']['content'].strip().replace('"', ''))
         except Exception as e:
             print(f"Report generation error: {e}")
             return f"It is {now}. I am unable to assess the situation due to a processing error."
