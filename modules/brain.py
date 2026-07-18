@@ -406,7 +406,7 @@ class Brain:
                 output = self.llm(
                     prompt,
                     max_tokens=350,
-                    stop=tags['stop'] + ["\n"],
+                    stop=tags['stop'],
                     echo=False
                 )
             return self._strip_thinking(output['choices'][0]['text'].strip().replace('"', ''))

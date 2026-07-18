@@ -3,6 +3,7 @@ import sys
 import numpy as np
 import ssl
 import threading
+from functools import lru_cache
 
 def setup_logger(name="MumbleButler", level=logging.INFO):
     """Sets up a standardized logger."""
@@ -35,19 +36,13 @@ def pcm_to_float(raw_bytes: bytes) -> np.ndarray:
         audio_int16 = audio_int16[:-1]
     return (audio_int16 / 32768.0).astype(np.float32)
 
-_RESAMPLE_CACHE = {}
-_RESAMPLE_CACHE_LOCK = threading.Lock()
-
+@lru_cache(maxsize=128)
 def get_resample_indices(input_len: int, input_rate: int, target_rate: int):
     """Retrieves or creates cached index arrays for resampling to avoid repetitive allocations."""
-    key = (input_len, input_rate, target_rate)
-    with _RESAMPLE_CACHE_LOCK:
-        if key not in _RESAMPLE_CACHE:
-            source_indices = np.arange(input_len)
-            target_len = int(input_len * (target_rate / input_rate))
-            target_indices = np.linspace(0, input_len - 1, target_len)
-            _RESAMPLE_CACHE[key] = (source_indices, target_indices)
-        return _RESAMPLE_CACHE[key]
+    source_indices = np.arange(input_len)
+    target_len = int(input_len * (target_rate / input_rate))
+    target_indices = np.linspace(0, input_len - 1, target_len)
+    return (source_indices, target_indices)
 
 def resample_audio(audio_data: np.ndarray, input_rate: int, target_rate: int) -> np.ndarray:
     """Resamples audio using linear interpolation (numpy only), utilizing cached indices."""

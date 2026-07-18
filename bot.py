@@ -168,7 +168,8 @@ class MadnessBot:
                 self.logger.info(f"🔄 Reconnecting in {config.RECONNECT_DELAY} seconds...")
                 time.sleep(config.RECONNECT_DELAY)
                 # Clear audio buffers on reconnect to prevent stale processing
-                self.audio_manager.user_streams.clear()
+                with self.audio_manager.lock:
+                    self.audio_manager.user_streams.clear()
 
     def shutdown(self):
         self.logger.info("Shutting down...")
@@ -292,9 +293,11 @@ class MadnessBot:
 
     def say_stream(self, prompt, user=None):
         speech_generation = self.speech_generation
-        task = self.loop.create_task(self._tts_stream_worker(speech_generation, prompt, user))
-        self.background_tasks.add(task)
-        task.add_done_callback(self.background_tasks.discard)
+        def _schedule():
+            task = self.loop.create_task(self._tts_stream_worker(speech_generation, prompt, user))
+            self.background_tasks.add(task)
+            task.add_done_callback(self.background_tasks.discard)
+        self.loop.call_soon_threadsafe(_schedule)
 
     async def _tts_stream_worker(self, speech_generation, prompt, user):
         import re

@@ -110,7 +110,8 @@ TEXT_TRIGGERS = {
     'VOICE': "?voice",
     'SAY': "?say",
     'MEMORY': "?memory",
-    'RECOMMEND': "?recommend"
+    'RECOMMEND': "?recommend",
+    'REMIND': "?remind"
 }
 
 # --- AUDIO PARAMETERS ---

@@ -98,7 +98,36 @@ class TextHandler:
 
         elif cmd == config.TEXT_TRIGGERS['SAY']:
             if arg:
-                self.bot.say_async(arg, user=sender['name'])
+                if len(arg) > 1000:
+                    self.bot.send_chat("<b>Error:</b> Text-to-speech length is limited to 1000 characters.")
+                else:
+                    self.bot.say_async(arg, user=sender['name'])
+
+        elif cmd == config.TEXT_TRIGGERS['REMIND']:
+            import re
+            match = re.search(
+                r"^(?:in\s+)?(\d+)\s+(second|minute|hour)s?(?:\s+(?:about|to))?\s+(.+)",
+                arg.strip(),
+                re.IGNORECASE
+            )
+            if match:
+                amount = int(match.group(1))
+                unit = match.group(2).lower()
+                message = match.group(3).strip()
+                
+                unit_seconds = {
+                    "second": 1,
+                    "minute": 60,
+                    "hour": 3600,
+                }
+                seconds = amount * unit_seconds[unit]
+                normalized_unit = f"{unit}s" if amount != 1 else unit
+                time_text = f"{amount} {normalized_unit}"
+                
+                self.bot.schedule_reminder(seconds, message)
+                self.bot.send_chat(f"Reminder scheduled: I will remind you in {time_text} about {message}.")
+            else:
+                self.bot.send_chat("<b>Usage:</b> ?remind [in] &lt;amount&gt; &lt;second/minute/hour&gt;s [about] &lt;message&gt;<br/><i>Example: ?remind in 10 minutes about standup</i>")
 
         elif cmd == config.TEXT_TRIGGERS['RECOMMEND']:
             song = self.bot.brain.recommend_song(arg or "random music", chat_context=self.bot.recent_transcripts)

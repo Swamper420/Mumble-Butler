@@ -57,38 +57,51 @@ class AudioManager:
         audio_int16 = np.frombuffer(pcm_data, dtype=np.int16)
         audio_16k_int16 = resample_int16(audio_int16, 48000, 16000)
         
+        chunks_to_predict = []
         with stream.lock:
-            # Accumulate and predict in 1280-sample (80ms) chunks
+            if stream.wakeword_detected:
+                stream.pending_wakeword_chunks -= 1
+                return
+
+            # Accumulate and extract complete 1280-sample (80ms) chunks
             stream.accumulated_16k_int16 = np.concatenate((stream.accumulated_16k_int16, audio_16k_int16))
             
             chunk_size = 1280
-            detected = False
             while len(stream.accumulated_16k_int16) >= chunk_size:
                 chunk = stream.accumulated_16k_int16[:chunk_size]
                 stream.accumulated_16k_int16 = stream.accumulated_16k_int16[chunk_size:]
-                
+                chunks_to_predict.append(chunk)
+
+        # Run ONNX inference outside the lock
+        detected = False
+        if chunks_to_predict and stream.wakeword_model:
+            for chunk in chunks_to_predict:
                 predictions = stream.wakeword_model.predict(chunk)
                 for score in predictions.values():
                     if score >= config.WAKEWORD_THRESHOLD:
                         detected = True
                         break
-                
                 if detected:
-                    stream.wakeword_detected = True
-                    if self.bot:
-                        self.bot.logger.info(f"🎙️ Wake word detected in stream for {stream.name}!")
-                        
-                        # Play chime instantly and interrupt active speech
-                        self.bot.stop_speaking()
-                        
-                        if self.bot.chime_pcm and self.bot.mumble and self.bot.mumble.sound_output:
-                            try:
-                                self.bot.mumble.sound_output.add_sound(self.bot.chime_pcm)
-                            except Exception as e:
-                                self.bot.logger.error(f"Error playing chime: {e}")
                     break
-            
+
+        trigger_bot_reaction = False
+        with stream.lock:
             stream.pending_wakeword_chunks -= 1
+            if detected and not stream.wakeword_detected:
+                stream.wakeword_detected = True
+                trigger_bot_reaction = True
+
+        if trigger_bot_reaction and self.bot:
+            self.bot.logger.info(f"🎙️ Wake word detected in stream for {stream.name}!")
+            
+            # Play chime instantly and interrupt active speech
+            self.bot.stop_speaking()
+            
+            if self.bot.chime_pcm and self.bot.mumble and self.bot.mumble.sound_output:
+                try:
+                    self.bot.mumble.sound_output.add_sound(self.bot.chime_pcm)
+                except Exception as e:
+                    self.bot.logger.error(f"Error playing chime: {e}")
 
     def prune_streams(self):
         """Optional: Remove old/empty streams to save memory."""
