@@ -18,7 +18,7 @@ class EarTranscribeTests(unittest.TestCase):
 
         with patch.object(ears, "STT_AVAILABLE", True), \
              patch.object(ears, "AutoProcessor") as mock_processor_cls, \
-             patch.object(ears, "MoonshineForConditionalGeneration") as mock_model_cls:
+             patch.object(ears, "MoonshineStreamingForConditionalGeneration") as mock_model_cls:
             
             mock_processor_cls.from_pretrained.return_value = fake_processor
             mock_model_cls.from_pretrained.return_value = fake_model

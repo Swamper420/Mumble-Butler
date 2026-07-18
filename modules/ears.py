@@ -4,7 +4,7 @@ import config
 from utils import resample_audio, pcm_to_float
 
 try:
-    from transformers import AutoProcessor, MoonshineForConditionalGeneration
+    from transformers import AutoProcessor, MoonshineStreamingForConditionalGeneration
     STT_AVAILABLE = True
 except ImportError:
     STT_AVAILABLE = False
@@ -18,7 +18,7 @@ class Ear:
             try:
                 print(f"👂 Loading Moonshine ({self.device})...")
                 self.processor = AutoProcessor.from_pretrained(config.MOONSHINE_MODEL_SIZE)
-                self.model = MoonshineForConditionalGeneration.from_pretrained(config.MOONSHINE_MODEL_SIZE)
+                self.model = MoonshineStreamingForConditionalGeneration.from_pretrained(config.MOONSHINE_MODEL_SIZE)
                 self.model.to(self.device)
             except Exception as e:
                 print(f"❌ Moonshine Load Error: {e}")
