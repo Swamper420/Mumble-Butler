@@ -14,6 +14,7 @@ class UserVoiceStream:
         self.wakeword_detected = False
         self.accumulated_16k_int16 = np.array([], dtype=np.int16)
         self.wakeword_model = None
+        self.pending_wakeword_chunks = 0
         
         if bot and hasattr(bot, 'wakeword_detector') and bot.wakeword_detector.enabled:
             try:
@@ -32,6 +33,7 @@ class UserVoiceStream:
             self.buffer.clear()
             self.wakeword_detected = False
             self.accumulated_16k_int16 = np.array([], dtype=np.int16)
+            self.pending_wakeword_chunks = 0
             if self.wakeword_model:
                 try:
                     self.wakeword_model.reset()

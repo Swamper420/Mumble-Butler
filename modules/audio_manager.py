@@ -1,5 +1,6 @@
 import threading
 import time
+import queue
 import numpy as np
 from modules.audio_buffer import UserVoiceStream
 import config
@@ -9,6 +10,11 @@ class AudioManager:
         self.bot = bot
         self.user_streams = {}
         self.lock = threading.Lock()
+        
+        # Background wakeword queue and thread
+        self.wakeword_queue = queue.Queue()
+        self.wakeword_thread = threading.Thread(target=self._wakeword_worker, daemon=True)
+        self.wakeword_thread.start()
 
     def add_audio(self, user_name, pcm_data):
         """Thread-safe method to add audio data to a user's stream."""
@@ -18,44 +24,71 @@ class AudioManager:
             stream = self.user_streams[user_name]
             stream.add_data(pcm_data)
 
-        # Run openwakeword on-the-fly incrementally
+        # Offload wakeword checking to the background queue
         if self.bot and hasattr(self.bot, 'wakeword_detector') and self.bot.wakeword_detector.enabled and stream.wakeword_model:
             with stream.lock:
                 if not stream.wakeword_detected:
-                    from utils import resample_int16
-                    
-                    # Downsample incoming 48kHz audio to 16kHz directly in int16
-                    audio_int16 = np.frombuffer(pcm_data, dtype=np.int16)
-                    audio_16k_int16 = resample_int16(audio_int16, 48000, 16000)
-                    
-                    # Accumulate and predict in 1280-sample (80ms) chunks
-                    stream.accumulated_16k_int16 = np.concatenate((stream.accumulated_16k_int16, audio_16k_int16))
-                    
-                    chunk_size = 1280
-                    while len(stream.accumulated_16k_int16) >= chunk_size:
-                        chunk = stream.accumulated_16k_int16[:chunk_size]
-                        stream.accumulated_16k_int16 = stream.accumulated_16k_int16[chunk_size:]
+                    stream.pending_wakeword_chunks += 1
+                    self.wakeword_queue.put((stream, pcm_data))
+
+    def _wakeword_worker(self):
+        while True:
+            try:
+                item = self.wakeword_queue.get()
+                if item is None:
+                    break
+                stream, pcm_data = item
+                self._process_wakeword(stream, pcm_data)
+            except Exception as e:
+                if self.bot:
+                    self.bot.logger.error(f"Error in wakeword worker: {e}")
+            finally:
+                self.wakeword_queue.task_done()
+
+    def _process_wakeword(self, stream, pcm_data):
+        with stream.lock:
+            if stream.wakeword_detected:
+                stream.pending_wakeword_chunks -= 1
+                return
+
+        from utils import resample_int16
+        
+        # Downsample incoming 48kHz audio to 16kHz directly in int16
+        audio_int16 = np.frombuffer(pcm_data, dtype=np.int16)
+        audio_16k_int16 = resample_int16(audio_int16, 48000, 16000)
+        
+        with stream.lock:
+            # Accumulate and predict in 1280-sample (80ms) chunks
+            stream.accumulated_16k_int16 = np.concatenate((stream.accumulated_16k_int16, audio_16k_int16))
+            
+            chunk_size = 1280
+            detected = False
+            while len(stream.accumulated_16k_int16) >= chunk_size:
+                chunk = stream.accumulated_16k_int16[:chunk_size]
+                stream.accumulated_16k_int16 = stream.accumulated_16k_int16[chunk_size:]
+                
+                predictions = stream.wakeword_model.predict(chunk)
+                for score in predictions.values():
+                    if score >= config.WAKEWORD_THRESHOLD:
+                        detected = True
+                        break
+                
+                if detected:
+                    stream.wakeword_detected = True
+                    if self.bot:
+                        self.bot.logger.info(f"🎙️ Wake word detected in stream for {stream.name}!")
                         
-                        predictions = stream.wakeword_model.predict(chunk)
-                        detected = False
-                        for score in predictions.values():
-                            if score >= config.WAKEWORD_THRESHOLD:
-                                detected = True
-                                break
+                        # Play chime instantly and interrupt active speech
+                        self.bot.stop_speaking()
                         
-                        if detected:
-                            stream.wakeword_detected = True
-                            self.bot.logger.info(f"🎙️ Wake word detected in stream for {user_name}!")
-                            
-                            # Play chime instantly and interrupt active speech
-                            self.bot.stop_speaking()
-                            
-                            if self.bot.chime_pcm and self.bot.mumble and self.bot.mumble.sound_output:
-                                try:
-                                    self.bot.mumble.sound_output.add_sound(self.bot.chime_pcm)
-                                except Exception as e:
-                                    self.bot.logger.error(f"Error playing chime: {e}")
-                            break
+                        if self.bot.chime_pcm and self.bot.mumble and self.bot.mumble.sound_output:
+                            try:
+                                self.bot.mumble.sound_output.add_sound(self.bot.chime_pcm)
+                            except Exception as e:
+                                self.bot.logger.error(f"Error playing chime: {e}")
+                    break
+            
+            stream.pending_wakeword_chunks -= 1
 
     def prune_streams(self):
         """Optional: Remove old/empty streams to save memory."""
@@ -84,13 +117,14 @@ class AudioManager:
                 is_silence = (now - stream.last_packet_time) > config.SILENCE_THRESHOLD
                 has_data = len(stream.buffer) > 0
                 is_processing = stream.is_processing
+                has_pending = stream.pending_wakeword_chunks > 0
                 
                 # If wakeword is disabled/bypassed, treat as always detected
                 wakeword_ok = True
                 if self.bot and hasattr(self.bot, 'wakeword_detector') and self.bot.wakeword_detector.enabled:
                     wakeword_ok = stream.wakeword_detected
 
-            if is_silence and has_data and not is_processing:
+            if is_silence and has_data and not is_processing and not has_pending:
                 # If wakeword is required but not detected, discard the stream's audio
                 if not wakeword_ok:
                     with stream.lock:
