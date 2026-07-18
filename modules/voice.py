@@ -30,7 +30,7 @@ class Voice:
         default_path = os.path.join(voice_dir, f"{self.current_voice_id}.wav")
         if not os.path.exists(default_path):
             print(f"📥 Downloading default voice reference to {default_path}...")
-            url = "https://github.com/voxserv/audio_quality_testing_samples/raw/master/testaudio/test01_20s.wav"
+            url = "https://github.com/voxserv/audio_quality_testing_samples/raw/refs/heads/master/testaudio/16000/test01_20s.wav"
             try:
                 urllib.request.urlretrieve(url, default_path)
                 print("✅ Default voice reference downloaded successfully.")
