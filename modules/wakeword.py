@@ -54,14 +54,12 @@ class WakewordDetector:
             return True
 
         try:
-            # 1. Convert bytes to float32
-            audio_float = pcm_to_float(raw_pcm)
+            # 1. Convert bytes directly to int16 numpy array
+            audio_int16 = np.frombuffer(raw_pcm, dtype=np.int16)
 
-            # 2. Resample 48k (Mumble) -> 16k
-            audio_16k_float = resample_audio(audio_float, 48000, 16000)
-
-            # 3. Convert float32 back to int16 (required by openwakeword)
-            audio_16k_int16 = (audio_16k_float * 32767.0).clip(-32768, 32767).astype(np.int16)
+            # 2. Resample 48k (Mumble) -> 16k directly in int16
+            from utils import resample_int16
+            audio_16k_int16 = resample_int16(audio_int16, 48000, 16000)
 
             # Reset model state/accumulator between predictions
             self.model.reset()

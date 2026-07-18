@@ -10,6 +10,7 @@ class Voice:
     def __init__(self):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.engine = getattr(config, "TTS_ENGINE", "chatterbox-turbo")
+        self.conds_cache = {}
 
         if self.engine == "chatterbox-turbo":
             print(f"🗣️ Loading Chatterbox-Turbo TTS ({self.device})...")
@@ -17,6 +18,17 @@ class Voice:
             self.model = ChatterboxTurboTTS.from_pretrained(device=self.device)
             self.current_voice_id = getattr(config, "CHATTERBOX_DEFAULT_VOICE", "michael")
             self._ensure_default_voice()
+            
+            # Pre-warm default voice
+            voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
+            default_path = os.path.join(voice_dir, f"{self.current_voice_id}.wav")
+            if os.path.exists(default_path):
+                try:
+                    print(f"🔥 Pre-warming conditionals cache for default voice: {self.current_voice_id}...")
+                    self.model.prepare_conditionals(default_path)
+                    self.conds_cache[self.current_voice_id] = self.model.conds
+                except Exception as e:
+                    print(f"⚠️ Failed to pre-warm default voice cache: {e}")
         else:
             print(f"🗣️ Loading Kokoro TTS ({self.device})...")
             from kokoro import KPipeline
@@ -45,20 +57,29 @@ class Voice:
             if self.engine == "chatterbox-turbo":
                 voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
                 voice_path = os.path.join(voice_dir, f"{target_voice}.wav")
+                
+                # Check if voice_path exists, fallback if not
                 if not os.path.exists(voice_path):
-                    # Fallback to default voice
                     default_voice = getattr(config, "CHATTERBOX_DEFAULT_VOICE", "michael")
                     voice_path = os.path.join(voice_dir, f"{default_voice}.wav")
                     if not os.path.exists(voice_path):
                         self._ensure_default_voice()
+                    target_voice = default_voice
 
                 if not os.path.exists(voice_path):
                     raise FileNotFoundError(f"Reference voice wav not found at {voice_path}")
 
-                # Generate audio using Chatterbox-Turbo
+                # Load voice conditionals from cache or prepare and cache them
+                if target_voice in self.conds_cache:
+                    self.model.conds = self.conds_cache[target_voice]
+                else:
+                    self.model.prepare_conditionals(voice_path)
+                    self.conds_cache[target_voice] = self.model.conds
+
+                # Generate audio using Chatterbox-Turbo with cached conditionals
                 wav_tensor = self.model.generate(
                     text,
-                    audio_prompt_path=voice_path,
+                    audio_prompt_path=None,
                     temperature=getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
                 )
 

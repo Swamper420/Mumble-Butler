@@ -45,6 +45,17 @@ def resample_audio(audio_data: np.ndarray, input_rate: int, target_rate: int) ->
 
     return np.interp(target_indices, source_indices, audio_data)
 
+def resample_int16(audio_data: np.ndarray, input_rate: int, target_rate: int) -> np.ndarray:
+    """Resamples int16 audio directly using linear interpolation (numpy only) to avoid float conversion."""
+    if input_rate == target_rate:
+        return audio_data
+
+    source_indices = np.arange(len(audio_data))
+    target_len = int(len(audio_data) * (target_rate / input_rate))
+    target_indices = np.linspace(0, len(audio_data) - 1, target_len)
+
+    return np.interp(target_indices, source_indices, audio_data).astype(np.int16)
+
 def float_to_pcm(audio_float: np.ndarray) -> bytes:
     """Converts float32 audio back to int16 bytes."""
     return (audio_float * 32767).clip(-32768, 32767).astype(np.int16).tobytes()

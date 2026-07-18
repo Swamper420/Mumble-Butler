@@ -22,12 +22,11 @@ class AudioManager:
         if self.bot and hasattr(self.bot, 'wakeword_detector') and self.bot.wakeword_detector.enabled and stream.wakeword_model:
             with stream.lock:
                 if not stream.wakeword_detected:
-                    from utils import pcm_to_float, resample_audio
+                    from utils import resample_int16
                     
-                    # Downsample incoming 48kHz audio to 16kHz
-                    audio_float = pcm_to_float(pcm_data)
-                    audio_16k_float = resample_audio(audio_float, 48000, 16000)
-                    audio_16k_int16 = (audio_16k_float * 32767.0).clip(-32768, 32767).astype(np.int16)
+                    # Downsample incoming 48kHz audio to 16kHz directly in int16
+                    audio_int16 = np.frombuffer(pcm_data, dtype=np.int16)
+                    audio_16k_int16 = resample_int16(audio_int16, 48000, 16000)
                     
                     # Accumulate and predict in 1280-sample (80ms) chunks
                     stream.accumulated_16k_int16 = np.concatenate((stream.accumulated_16k_int16, audio_16k_int16))
