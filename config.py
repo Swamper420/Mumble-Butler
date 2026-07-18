@@ -109,6 +109,7 @@ TEXT_TRIGGERS = {
     'FORGET': "?forget",
     'VOICE': "?voice",
     'SAY': "?say",
+    'SAYSAVE': "?saysave",
     'MEMORY': "?memory",
     'RECOMMEND': "?recommend",
     'REMIND': "?remind"

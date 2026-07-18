@@ -103,6 +103,15 @@ class TextHandler:
                 else:
                     self.bot.say_async(arg, user=sender['name'])
 
+        elif cmd == config.TEXT_TRIGGERS['SAYSAVE']:
+            if arg:
+                if len(arg) > 1000:
+                    self.bot.send_chat("<b>Error:</b> Text-to-speech length is limited to 1000 characters.")
+                else:
+                    self.bot.saysave_async(arg, user=sender['name'])
+            else:
+                self.bot.send_chat("<b>Usage:</b> ?saysave &lt;text&gt;")
+
         elif cmd == config.TEXT_TRIGGERS['REMIND']:
             import re
             match = re.search(

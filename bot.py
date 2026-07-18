@@ -287,6 +287,92 @@ class MadnessBot:
         await asyncio.sleep(seconds)
         self.say_async(f"Reminder: {message}")
 
+    def saysave_async(self, text, user=None):
+        def _schedule():
+            try:
+                if not hasattr(self, 'background_tasks'):
+                    self.background_tasks = set()
+                task = self.loop.create_task(self._async_saysave(text, user))
+                self.background_tasks.add(task)
+                task.add_done_callback(self.background_tasks.discard)
+            except Exception as e:
+                self.logger.error(f"CRITICAL ERROR in saysave_async: {e}")
+        self.loop.call_soon_threadsafe(_schedule)
+
+    async def _async_saysave(self, text, user):
+        import re
+        import string
+        import random
+        from datetime import datetime
+
+        cleaned = text.replace("\\n", " ").replace("/n", " ").replace("\\t", " ").replace("/t", " ")
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        if not cleaned:
+            self.send_chat("<b>Error:</b> Empty text provided for saysave.")
+            return
+
+        # Play the audio locally on the channel as well
+        self.say_async(cleaned, user=user)
+
+        # Generate the audio bytes
+        try:
+            pcm_data = await self.loop.run_in_executor(
+                self.executor,
+                self.voice.generate_pcm,
+                cleaned,
+                None
+            )
+        except Exception as e:
+            self.logger.error(f"Error generating PCM for saysave: {e}")
+            self.send_chat("<b>Error:</b> Failed to generate speech audio.")
+            return
+
+        if not pcm_data:
+            self.send_chat("<b>Error:</b> Speech generation returned no audio data.")
+            return
+
+        try:
+            # Ensure the directory exists
+            save_dir = "data/saysaves"
+            os.makedirs(save_dir, exist_ok=True)
+
+            # Generate unique filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            random_suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=4))
+            filename = f"saysave_{timestamp}_{random_suffix}.m4a"
+            output_path = os.path.join(save_dir, filename)
+            abs_path = os.path.abspath(output_path)
+
+            # Convert PCM to AAC M4A using ffmpeg
+            cmd = [
+                'ffmpeg', '-y',
+                '-f', 's16le',
+                '-ar', '48000',
+                '-ac', '1',
+                '-i', 'pipe:0',
+                '-c:a', 'aac',
+                output_path
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await proc.communicate(input=pcm_data)
+
+            if proc.returncode == 0:
+                self.send_chat(
+                    f"🗣️ Voiceline saved to <b>data/saysaves/{filename}</b><br/>"
+                    f"Path: <code>{abs_path}</code>"
+                )
+            else:
+                self.logger.error(f"ffmpeg conversion failed with exit code {proc.returncode}")
+                self.send_chat("<b>Error:</b> ffmpeg audio conversion failed.")
+        except Exception as e:
+            self.logger.error(f"Error saving voiceline: {e}")
+            self.send_chat(f"<b>Error:</b> Failed to save voiceline: {e}")
+
     def say_async(self, text, user=None):
         import re
         speech_generation = self.speech_generation
