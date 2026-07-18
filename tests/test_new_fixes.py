@@ -84,18 +84,11 @@ class TestNewFixes(unittest.TestCase):
         # Should be truncated to 10 seconds (960000 bytes)
         self.assertEqual(len(stream.buffer), 960000)
 
-    def test_resample_cache_lru(self):
-        # Clear cache info first
-        get_resample_indices.cache_clear()
-        
-        # Call it with various parameters
-        indices1 = get_resample_indices(1000, 48000, 16000)
-        indices2 = get_resample_indices(1000, 48000, 16000)
-        self.assertIs(indices1, indices2)  # Should be cached same object
-        
-        info = get_resample_indices.cache_info()
-        self.assertEqual(info.hits, 1)
-        self.assertEqual(info.misses, 1)
+    def test_resample_indices(self):
+        # Call it with various parameters and verify lengths
+        source, target = get_resample_indices(1280, 48000, 16000)
+        self.assertEqual(len(source), 1280)
+        self.assertEqual(len(target), 426)
 
 if __name__ == "__main__":
     unittest.main()
