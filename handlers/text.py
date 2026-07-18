@@ -65,12 +65,35 @@ class TextHandler:
             self.bot.send_chat(f"Context Memory: {state_str}")
 
         elif cmd == config.TEXT_TRIGGERS['VOICE']:
-            if arg.lower() in config.AVAILABLE_VOICES:
-                self.bot.voice.current_voice_id = config.AVAILABLE_VOICES[arg.lower()]
-                self.bot.send_chat(f"Voice changed to: {arg}")
+            if getattr(self.bot.voice, "engine", "kokoro") == "chatterbox-turbo":
+                import glob
+                voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
+                os.makedirs(voice_dir, exist_ok=True)
+                wav_files = glob.glob(os.path.join(voice_dir, "*.wav"))
+                available_voices = [os.path.splitext(os.path.basename(f))[0] for f in wav_files]
+
+                if not arg:
+                    voices_list = ", ".join(available_voices) if available_voices else "None (drop .wav files in data/voices/)"
+                    self.bot.send_chat(f"Available Chatterbox voices: {voices_list}")
+                else:
+                    clean_arg = arg.lower()
+                    matched = None
+                    for v in available_voices:
+                        if v.lower() == clean_arg:
+                            matched = v
+                            break
+                    if matched:
+                        self.bot.voice.current_voice_id = matched
+                        self.bot.send_chat(f"Voice changed to: {matched}")
+                    else:
+                        self.bot.send_chat(f"Voice '{arg}' not found. Place a '{arg}.wav' file in {voice_dir} to clone it.")
             else:
-                voices_list = ", ".join(config.AVAILABLE_VOICES.keys())
-                self.bot.send_chat(f"Available voices: {voices_list}")
+                if arg.lower() in config.AVAILABLE_VOICES:
+                    self.bot.voice.current_voice_id = config.AVAILABLE_VOICES[arg.lower()]
+                    self.bot.send_chat(f"Voice changed to: {arg}")
+                else:
+                    voices_list = ", ".join(config.AVAILABLE_VOICES.keys())
+                    self.bot.send_chat(f"Available Kokoro voices: {voices_list}")
 
         elif cmd == config.TEXT_TRIGGERS['SAY']:
             if arg:

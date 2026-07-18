@@ -41,17 +41,24 @@ WAKEWORD_MODEL_PATHS = [p.strip() for p in os.getenv("WAKEWORD_MODEL_PATHS", "")
 WAKEWORD_BUILTIN_MODELS = [m.strip() for m in os.getenv("WAKEWORD_BUILTIN_MODELS", "hey_jarvis").split(",") if m.strip()]
 WAKEWORD_THRESHOLD = float(os.getenv("WAKEWORD_THRESHOLD", "0.5"))
 
+TTS_ENGINE = os.getenv("TTS_ENGINE", "chatterbox-turbo")
+
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", (
     "You are 'Obama', a suave and savvy digital butler from the 2000s. "
     "You are impeccable, polite, and efficiently helpful. "
     "Keep your responses short and concise — ideally one or two sentences. "
     "Always respond in ENGLISH."
+    + (" You are encouraged to use expressive paralinguistic tags like [laugh], [sigh], [gasp], [cough], [chuckle] in your responses to sound natural." if TTS_ENGINE == "chatterbox-turbo" else "")
 ))
 
 SHUTUP_KEYWORDS = os.getenv("SHUTUP_KEYWORDS", "shut up,shutup,be quiet").split(",")
 
 KOKORO_VOICE_ID = os.getenv("KOKORO_VOICE_ID", 'am_michael')
 KOKORO_SPEED = float(os.getenv("KOKORO_SPEED", "0.9"))
+
+CHATTERBOX_VOICE_DIR = os.getenv("CHATTERBOX_VOICE_DIR", "data/voices")
+CHATTERBOX_DEFAULT_VOICE = os.getenv("CHATTERBOX_DEFAULT_VOICE", "michael")
+CHATTERBOX_TEMPERATURE = float(os.getenv("CHATTERBOX_TEMPERATURE", "0.8"))
 
 AVAILABLE_VOICES = {
     'heart': 'af_heart', 'bella': 'af_bella', 'nicole': 'af_nicole',

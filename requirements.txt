@@ -7,3 +7,4 @@ python-dotenv
 rapidfuzz
 openwakeword
 onnxruntime
+chatterbox-tts
