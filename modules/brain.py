@@ -41,6 +41,29 @@ class Brain:
                 self.history = [] # Optional: clear history when disabling?
             return self.memory_enabled
 
+    def _get_tags(self):
+        fmt = getattr(config, 'LLM_PROMPT_FORMAT', 'chatml').lower()
+        if fmt == 'gemma':
+            return {
+                'system_start': '<start_of_turn>system\n',
+                'system_end': '<end_of_turn>\n',
+                'user_start': '<start_of_turn>user\n',
+                'user_end': '<end_of_turn>\n',
+                'assistant_start': '<start_of_turn>model\n',
+                'assistant_end': '<end_of_turn>\n',
+                'stop': ['<end_of_turn>', '<start_of_turn>']
+            }
+        else: # default to chatml
+            return {
+                'system_start': '<|im_start|>system\n',
+                'system_end': '<|im_end|>\n',
+                'user_start': '<|im_start|>user\n',
+                'user_end': '<|im_end|>\n',
+                'assistant_start': '<|im_start|>assistant\n',
+                'assistant_end': '<|im_end|>\n',
+                'stop': ['<|im_end|>', '<|im_start|>']
+            }
+
 
 
     def _strip_thinking(self, text: str) -> str:
@@ -58,6 +81,7 @@ class Brain:
     def generate_response(self, user_prompt: str, max_tokens=120) -> str:
         if not self.llm: return "My brain is offline."
 
+        tags = self._get_tags()
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
         full_system = f"{base_system}\nContext: It is {now}."
@@ -67,23 +91,26 @@ class Brain:
         if self.memory_enabled:
             with self.lock:
                 for msg in self.history:
-                    history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
+                    role_start = tags['user_start'] if msg['role'] == 'user' else tags['assistant_start']
+                    role_end = tags['user_end'] if msg['role'] == 'user' else tags['assistant_end']
+                    history_str += f"{role_start}{msg['content']}{role_end}"
 
         formatted_prompt = self._format_user_prompt(user_prompt)
         prompt = (
-            f"<|im_start|>system\n{full_system}<|im_end|>\n"
+            f"{tags['system_start']}{full_system}{tags['system_end']}"
             f"{history_str}"
-            f"<|im_start|>user\n{formatted_prompt}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+            f"{tags['user_start']}{formatted_prompt}{tags['user_end']}"
+            f"{tags['assistant_start']}"
         )
 
         try:
             with self.lock:
-                output = self.llm(prompt, max_tokens=max_tokens, stop=["<|im_end|>", "<|im_start|>"], echo=False)
+                output = self.llm(prompt, max_tokens=max_tokens, stop=tags['stop'], echo=False)
 
             text = output['choices'][0]['text']
             # Clean tags
-            text = text.replace("<|im_start|>", "").replace("<|im_end|>", "")
+            for t in ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>"]:
+                text = text.replace(t, "")
             text = self._strip_thinking(text)
             response = text.strip().replace('"', '').replace("Obama:", "")
 
@@ -97,6 +124,7 @@ class Brain:
             yield "My brain is offline."
             return
 
+        tags = self._get_tags()
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
         full_system = f"{base_system}\nContext: It is {now}."
@@ -105,14 +133,16 @@ class Brain:
         if self.memory_enabled:
             with self.lock:
                 for msg in self.history:
-                    history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
+                    role_start = tags['user_start'] if msg['role'] == 'user' else tags['assistant_start']
+                    role_end = tags['user_end'] if msg['role'] == 'user' else tags['assistant_end']
+                    history_str += f"{role_start}{msg['content']}{role_end}"
 
         formatted_prompt = self._format_user_prompt(user_prompt)
         prompt = (
-            f"<|im_start|>system\n{full_system}<|im_end|>\n"
+            f"{tags['system_start']}{full_system}{tags['system_end']}"
             f"{history_str}"
-            f"<|im_start|>user\n{formatted_prompt}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+            f"{tags['user_start']}{formatted_prompt}{tags['user_end']}"
+            f"{tags['assistant_start']}"
         )
 
         try:
@@ -122,14 +152,16 @@ class Brain:
                 output = self.llm(
                     prompt,
                     max_tokens=max_tokens,
-                    stop=["<|im_end|>", "<|im_start|>"],
+                    stop=tags['stop'],
                     echo=False,
                     stream=True
                 )
             
             for chunk in output:
                 token = chunk['choices'][0]['text']
-                token = token.replace("<|im_start|>", "").replace("<|im_end|>", "").replace("Obama:", "")
+                for t in ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>"]:
+                    token = token.replace(t, "")
+                token = token.replace("Obama:", "")
                 if token:
                     complete_response += token
                     # Suppress <think> blocks in real-time during streaming
@@ -251,9 +283,10 @@ class Brain:
 
         no_think = " /no_think" if config.LLM_DISABLE_THINKING else ""
         
+        tags = self._get_tags()
         # 2. Build structured prompt
         prompt = (
-            f"<|im_start|>system\n"
+            f"{tags['system_start']}"
             f"You are a master music recommender and curator bot.\n"
             f"Your job is to analyze the user's music request, identify the intent and vibe, and return structured recommendations.\n"
             f"Analyze the user request and recent chat context (if provided).\n"
@@ -277,12 +310,12 @@ class Brain:
             f"<Artist 3> - <Song Title 3>\n"
             f"<Artist 4> - <Song Title 4>\n"
             f"<Artist 5> - <Song Title 5>\n"
-            f"<|im_end|>\n"
-            f"<|im_start|>user\n"
+            f"{tags['system_end']}"
+            f"{tags['user_start']}"
             f"Context: {context_str}\n"
             f"User request: {description}\n"
-            f"Generate recommendations.{no_think}\n<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+            f"Generate recommendations.{no_think}\n{tags['user_end']}"
+            f"{tags['assistant_start']}"
         )
 
         try:
@@ -290,7 +323,7 @@ class Brain:
                 output = self.llm(
                     prompt,
                     max_tokens=250,
-                    stop=["<|im_end|>"],
+                    stop=tags['stop'],
                     echo=False,
                     temperature=0.6
                 )
@@ -355,16 +388,17 @@ class Brain:
         users_text = ", ".join(active_users) if active_users else "No one else is here."
         no_think = " /no_think" if config.LLM_DISABLE_THINKING else ""
 
+        tags = self._get_tags()
         prompt = (
-            f"<|im_start|>system\n"
+            f"{tags['system_start']}"
             f"{config.SYSTEM_PROMPT} "
             f"It is currently {now}. You are giving a periodic hourly status update to the room. "
             f"Mention the current time, acknowledge who is in the room ({users_text}), "
             f"and briefly summarize or comment on the vibe based on the last minute of conversation if any.\n"
-            f"Keep it brief (under 4 sentences), witty, and butler-like.\n<|im_end|>\n"
-            f"<|im_start|>user\n"
-            f"Recent conversation:\n{transcript_text}\n\nGive the status update.{no_think}\n<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+            f"Keep it brief (under 4 sentences), witty, and butler-like.\n{tags['system_end']}"
+            f"{tags['user_start']}"
+            f"Recent conversation:\n{transcript_text}\n\nGive the status update.{no_think}\n{tags['user_end']}"
+            f"{tags['assistant_start']}"
         )
 
         try:
@@ -372,7 +406,7 @@ class Brain:
                 output = self.llm(
                     prompt,
                     max_tokens=350,
-                    stop=["<|im_end|>", "\n"],
+                    stop=tags['stop'] + ["\n"],
                     echo=False
                 )
             return self._strip_thinking(output['choices'][0]['text'].strip().replace('"', ''))
