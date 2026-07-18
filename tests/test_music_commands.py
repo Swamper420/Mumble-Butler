@@ -152,6 +152,34 @@ class MusicCommandForwardingTests(unittest.TestCase):
         self.assertTrue(madness_bot.queue.empty())
         sound_output.clear_buffer.assert_called_once_with()
 
+    def test_say_async_chunking(self):
+        bot_module = _load_bot_module()
+        madness_bot = bot_module.MadnessBot.__new__(bot_module.MadnessBot)
+        madness_bot.speech_generation = 12
+        
+        queued_items = []
+        def fake_call_soon_threadsafe(func, *args):
+            func(*args)
+            
+        madness_bot.loop = SimpleNamespace(call_soon_threadsafe=fake_call_soon_threadsafe)
+        
+        class FakeAsyncQueue:
+            def put_nowait(self, item):
+                queued_items.append(item)
+                
+        madness_bot.queue = FakeAsyncQueue()
+        
+        test_text = "Hello! This is a test.   How are you doing today?\nLet's check this out."
+        madness_bot.say_async(test_text, user="Tester")
+        
+        expected = [
+            (12, "Hello!", "Tester"),
+            (12, "This is a test.", "Tester"),
+            (12, "How are you doing today?", "Tester"),
+            (12, "Let's check this out.", "Tester")
+        ]
+        self.assertEqual(queued_items, expected)
+
 
 if __name__ == "__main__":
     unittest.main()

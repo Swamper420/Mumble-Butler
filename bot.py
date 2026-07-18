@@ -288,8 +288,15 @@ class MadnessBot:
         self.say_async(f"Reminder: {message}")
 
     def say_async(self, text, user=None):
+        import re
         speech_generation = self.speech_generation
-        self.loop.call_soon_threadsafe(self.queue.put_nowait, (speech_generation, text, user))
+        sentence_delimiters = re.compile(r'(?<=[.!?])\s+|\n+')
+        sentences = sentence_delimiters.split(text)
+        for sentence in sentences:
+            cleaned = sentence.replace("\\n", " ").replace("/n", " ").replace("\\t", " ").replace("/t", " ")
+            cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+            if cleaned:
+                self.loop.call_soon_threadsafe(self.queue.put_nowait, (speech_generation, cleaned, user))
 
     def say_stream(self, prompt, user=None):
         speech_generation = self.speech_generation
