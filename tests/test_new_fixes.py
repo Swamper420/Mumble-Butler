@@ -90,5 +90,30 @@ class TestNewFixes(unittest.TestCase):
         self.assertEqual(len(source), 1280)
         self.assertEqual(len(target), 426)
 
+    def test_qwen_auto_detection_and_no_think(self):
+        from modules.brain import Brain
+        from unittest.mock import patch
+        
+        with patch('modules.brain.LLM_AVAILABLE', False):
+            brain = Brain()
+            
+            with patch('config.LLM_MODEL_PATH', 'models/qwen3.5-1.7b-instruct.gguf'):
+                with patch('config.LLM_PROMPT_FORMAT', 'gemma'):
+                    tags = brain._get_tags()
+                    self.assertEqual(tags['system_start'], '<|im_start|>system\n')
+                    
+                    with patch('config.LLM_DISABLE_THINKING', True):
+                        prompt = brain._format_user_prompt("hello")
+                        self.assertEqual(prompt, "hello")
+            
+            with patch('config.LLM_MODEL_PATH', 'models/gemma-3-8b-it.gguf'):
+                with patch('config.LLM_PROMPT_FORMAT', 'gemma'):
+                    tags = brain._get_tags()
+                    self.assertEqual(tags['system_start'], '<start_of_turn>system\n')
+                    
+                    with patch('config.LLM_DISABLE_THINKING', True):
+                        prompt = brain._format_user_prompt("hello")
+                        self.assertEqual(prompt, "hello /no_think")
+
 if __name__ == "__main__":
     unittest.main()

@@ -43,6 +43,10 @@ class Brain:
 
     def _get_tags(self):
         fmt = getattr(config, 'LLM_PROMPT_FORMAT', 'chatml').lower()
+        # Auto-detect ChatML format for Qwen models if default 'gemma' is selected
+        if fmt == 'gemma' and 'qwen' in getattr(config, 'LLM_MODEL_PATH', '').lower():
+            fmt = 'chatml'
+
         if fmt == 'gemma':
             return {
                 'system_start': '<start_of_turn>system\n',
@@ -65,7 +69,6 @@ class Brain:
             }
 
 
-
     def _strip_thinking(self, text: str) -> str:
         """Remove <think>...</think> blocks from LLM output."""
         if config.LLM_DISABLE_THINKING:
@@ -73,8 +76,8 @@ class Brain:
         return text.strip()
 
     def _format_user_prompt(self, user_prompt: str) -> str:
-        """Append /no_think suffix when thinking is disabled."""
-        if config.LLM_DISABLE_THINKING:
+        """Append /no_think suffix when thinking is disabled and using a Gemma model."""
+        if config.LLM_DISABLE_THINKING and 'gemma' in getattr(config, 'LLM_MODEL_PATH', '').lower():
             return f"{user_prompt} /no_think"
         return user_prompt
 
