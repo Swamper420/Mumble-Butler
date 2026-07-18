@@ -34,8 +34,47 @@ class MusicRecommender:
             self.history = self.history[-self.max_history:]
         self._save_history()
 
+    def _normalize_track(self, track_name):
+        if not track_name:
+            return ""
+        import re
+        normalized = track_name.lower().strip()
+        normalized = re.sub(r'[^a-z0-9\s]', ' ', normalized)
+        return ' '.join(normalized.split())
+
     def is_in_history(self, track_name):
-        return track_name in self.history
+        norm_track = self._normalize_track(track_name)
+        for h in self.history:
+            if self._normalize_track(h) == norm_track:
+                return True
+        return False
+
+    def verify_track_on_itunes(self, track_str):
+        """
+        Queries iTunes with a track string (e.g., 'Artist - Title') to see if it exists.
+        Returns the formatted 'Artist - Title' from iTunes if found, or None otherwise.
+        """
+        if not track_str or track_str.lower() == "random music":
+            return None
+        try:
+            url = "https://itunes.apple.com/search"
+            params = {
+                "term": track_str,
+                "limit": 3,
+                "entity": "song",
+                "media": "music"
+            }
+            response = requests.get(url, params=params, timeout=5)
+            response.raise_for_status()
+            data = response.json()
+
+            results = data.get('results', [])
+            if results:
+                track = results[0]
+                return f"{track.get('artistName')} - {track.get('trackName')}"
+        except Exception as e:
+            print(f"⚠️ iTunes verification error for '{track_str}': {e}")
+        return None
 
     def get_recommendation(self, seeds):
         """
@@ -45,7 +84,10 @@ class MusicRecommender:
         if not seeds:
             return None
 
-        for seed in seeds:
+        # Keep track of first seed's results for fallback if everything is in history
+        first_seed_all_tracks = []
+
+        for idx, seed in enumerate(seeds):
             # Try iTunes Search API
             try:
                 # Use 'music' entity to get songs
@@ -68,6 +110,8 @@ class MusicRecommender:
                 available_tracks = []
                 for track in results:
                     track_str = f"{track.get('artistName')} - {track.get('trackName')}"
+                    if idx == 0:
+                        first_seed_all_tracks.append(track_str)
                     if not self.is_in_history(track_str):
                         available_tracks.append(track_str)
 
@@ -81,4 +125,11 @@ class MusicRecommender:
                 print(f"⚠️ Recommender API error for seed '{seed}': {e}")
                 continue
 
+        # Fallback if everything is in history, but we have first_seed results
+        if first_seed_all_tracks:
+            selection = random.choice(first_seed_all_tracks)
+            self.add_to_history(selection)
+            return selection
+
         return None
+

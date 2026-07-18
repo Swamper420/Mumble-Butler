@@ -191,15 +191,56 @@ class Brain:
 
 
 
+    def parse_recommendation_output(self, llm_output: str):
+        lines = llm_output.strip().split('\n')
+        intent = "OPEN"
+        vibe = ""
+        recommendations = []
+        
+        current_section = None
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if line == "[INTENT]":
+                current_section = "intent"
+                continue
+            elif line == "[VIBE]":
+                current_section = "vibe"
+                continue
+            elif line == "[RECOMMENDATIONS]":
+                current_section = "recommendations"
+                continue
+            
+            if current_section == "intent":
+                intent = line.upper()
+            elif current_section == "vibe":
+                vibe = line
+            elif current_section == "recommendations":
+                if " - " in line:
+                    clean_line = re.sub(r'^\d+[\.\)\s-]*', '', line).strip()
+                    clean_line = re.sub(r'^[\-\*•\s]*', '', clean_line).strip()
+                    if clean_line:
+                        recommendations.append(clean_line)
+                        
+        return intent, vibe, recommendations
+
     def recommend_song(self, description, chat_context=None):
         """
         Sophisticated recommendation:
         1. Contextual vibe analysis.
-        2. LLM seed generation.
-        3. External discovery (iTunes).
+        2. LLM seed/track list generation with intent recognition.
+        3. iTunes verification & standardization.
+        4. History filtering.
         """
+        # If LLM is not available, fall back to pure keyword iTunes search
         if not self.llm:
-            return None
+            print("🧠 LLM is offline. Falling back to direct iTunes keyword search.")
+            fallback_seeds = [description] if description and description != "random music" else []
+            if not fallback_seeds:
+                fallback_seeds = ["classic rock", "pop", "electronic", "jazz", "lofi"]
+                random.shuffle(fallback_seeds)
+            return self.recommender.get_recommendation(fallback_seeds)
 
         # 1. Prepare Context
         context_str = ""
@@ -209,19 +250,38 @@ class Brain:
             context_str = "Recent chat vibe: " + " | ".join([f"{t['user']}: {t['text']}" for t in recent])
 
         no_think = " /no_think" if config.LLM_DISABLE_THINKING else ""
-        # 2. Generate Seeds
-        # We ask for a list of seeds. We emphasize sticking to the user's request if it's specific.
+        
+        # 2. Build structured prompt
         prompt = (
             f"<|im_start|>system\n"
-            f"You are a master music curator. If the user asks for a specific artist, genre, or vibe, "
-            f"you MUST prioritize it. Generate a list of 5 search terms. "
-            f"If the request is specific (e.g. 'Play Queen'), the terms must be that artist and 4 very similar ones. "
-            f"If the request is vague, be more creative. "
-            f"Output ONLY the terms separated by commas.\n<|im_end|>\n"
+            f"You are a master music recommender and curator bot.\n"
+            f"Your job is to analyze the user's music request, identify the intent and vibe, and return structured recommendations.\n"
+            f"Analyze the user request and recent chat context (if provided).\n"
+            f"Determine the intent:\n"
+            f"- SPECIFIC: The user is asking for a specific artist, song, or album (e.g. 'play Queen', 'play Yesterday').\n"
+            f"- GENRE_MOOD: The user is asking for a genre, mood, activity, or era (e.g. 'chill lofi', 'workout music', '80s pop').\n"
+            f"- OPEN: The user is asking for a general/random recommendation or didn't specify details.\n\n"
+            f"Then, generate a list of 5-7 real, existing songs (Artist - Song Title) that best match this request. "
+            f"If the request is SPECIFIC to a song, that exact song MUST be the first recommendation. "
+            f"If the request is SPECIFIC to an artist, the recommendations must be their most popular tracks or highly similar songs.\n"
+            f"If the request is GENRE_MOOD, recommendations must fit the mood/genre/energy level.\n"
+            f"If the request is OPEN, use the recent conversation vibe (if any) to curate something suitable, or suggest a high-quality track from any good genre.\n\n"
+            f"Respond strictly in this format, with no thinking blocks or extra conversational text:\n"
+            f"[INTENT]\n"
+            f"<SPECIFIC, GENRE_MOOD, or OPEN>\n"
+            f"[VIBE]\n"
+            f"<Brief description of the detected vibe/mood/genre>\n"
+            f"[RECOMMENDATIONS]\n"
+            f"<Artist 1> - <Song Title 1>\n"
+            f"<Artist 2> - <Song Title 2>\n"
+            f"<Artist 3> - <Song Title 3>\n"
+            f"<Artist 4> - <Song Title 4>\n"
+            f"<Artist 5> - <Song Title 5>\n"
+            f"<|im_end|>\n"
             f"<|im_start|>user\n"
             f"Context: {context_str}\n"
             f"User request: {description}\n"
-            f"Give me 5 music seeds.{no_think}\n<|im_end|>\n"
+            f"Generate recommendations.{no_think}\n<|im_end|>\n"
             f"<|im_start|>assistant\n"
         )
 
@@ -229,37 +289,54 @@ class Brain:
             with self.lock:
                 output = self.llm(
                     prompt,
-                    max_tokens=60,
-                    stop=["<|im_end|>", "\n"],
+                    max_tokens=250,
+                    stop=["<|im_end|>"],
                     echo=False,
-                    temperature=0.7
+                    temperature=0.6
                 )
 
-            seed_text = self._strip_thinking(output['choices'][0]['text'].strip())
-            llm_seeds = [s.strip() for s in seed_text.split(',') if s.strip()]
+            llm_text = self._strip_thinking(output['choices'][0]['text'].strip())
+            intent, vibe, recommendations = self.parse_recommendation_output(llm_text)
+            
+            print(f"🎵 Recommendation Intent: {intent}, Vibe: {vibe}")
+            print(f"🎵 LLM Recommendations: {recommendations}")
+            
+            if not recommendations:
+                print("⚠️ LLM didn't return formatted recommendations. Trying fallback keyword search.")
+                return self.recommender.get_recommendation([description])
 
-            # Final seed list: [User's original request] + [LLM's similar/diverse seeds]
-            seeds = []
-            if description and description != "random music":
-                seeds.append(description)
+            # Try to find a track from the recommendations
+            for i, track in enumerate(recommendations):
+                # If intent is SPECIFIC and it's the very first recommendation,
+                # we can bypass the history check, because the user explicitly asked for it!
+                is_explicit_request = (intent == "SPECIFIC" and i == 0)
+                
+                if not is_explicit_request and self.recommender.is_in_history(track):
+                    continue
+                
+                # Verify and clean the song name via iTunes Search API (optional but good)
+                verified = self.recommender.verify_track_on_itunes(track)
+                final_track = verified if verified else track
+                
+                # Check again if the verified name is in history
+                if not is_explicit_request and self.recommender.is_in_history(final_track):
+                    continue
+                
+                # Save to history and return
+                self.recommender.add_to_history(final_track)
+                return final_track
 
-            # Add LLM seeds, avoiding duplicates
-            for s in llm_seeds:
-                if s.lower() not in [x.lower() for x in seeds]:
-                    seeds.append(s)
+            # If all were in history or verification filtered everything, return the first one as fallback
+            fallback_track = recommendations[0]
+            verified = self.recommender.verify_track_on_itunes(fallback_track)
+            final_track = verified if verified else fallback_track
+            self.recommender.add_to_history(final_track)
+            return final_track
 
-            print(f"🎵 Final prioritized seeds: {seeds}")
-
-            # 3. Discover
-            result = self.recommender.get_recommendation(seeds)
-            if result:
-                print(f"✅ Recommendation: {result}")
-                return result
-
-            return None
         except Exception as e:
-            print(f"Recommendation error: {e}")
-            return None
+            print(f"Recommendation error: {e}. Trying fallback keyword search.")
+            return self.recommender.get_recommendation([description])
+
 
 
     # --- NEW METHOD ---
