@@ -6,8 +6,11 @@ from utils import resample_audio, pcm_to_float
 try:
     from transformers import AutoProcessor, MoonshineStreamingForConditionalGeneration
     STT_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     STT_AVAILABLE = False
+    import traceback
+    print(f"❌ Ear: ImportError loading transformers: {e}")
+    traceback.print_exc()
 
 class Ear:
     def __init__(self):
@@ -20,8 +23,11 @@ class Ear:
                 self.processor = AutoProcessor.from_pretrained(config.MOONSHINE_MODEL_SIZE)
                 self.model = MoonshineStreamingForConditionalGeneration.from_pretrained(config.MOONSHINE_MODEL_SIZE)
                 self.model.to(self.device)
+                print("✅ Moonshine Loaded Successfully!")
             except Exception as e:
+                import traceback
                 print(f"❌ Moonshine Load Error: {e}")
+                traceback.print_exc()
 
     def transcribe(self, raw_pcm: bytes) -> str:
         if not self.model or not self.processor: 
