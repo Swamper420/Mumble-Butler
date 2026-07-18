@@ -339,12 +339,21 @@ class MadnessBot:
 
     async def _generate_and_play_tts(self, speech_generation, sentence, user):
         if self.mumble and self.mumble.sound_output:
+            import re
+            # Clean up literal formatting codes to prevent Kokoro from attempting to read them aloud
+            cleaned_sentence = sentence.replace("\\n", " ").replace("/n", " ").replace("\\t", " ").replace("/t", " ")
+            cleaned_sentence = re.sub(r'\s+', ' ', cleaned_sentence).strip()
+            
+            if not cleaned_sentence:
+                return
+
             pcm_data = await self.loop.run_in_executor(
                 self.executor,
                 self.voice.generate_pcm,
-                sentence,
+                cleaned_sentence,
                 None
             )
+
             if pcm_data and speech_generation == self.speech_generation:
                 try:
                     self.mumble.sound_output.add_sound(pcm_data)
