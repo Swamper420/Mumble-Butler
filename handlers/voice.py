@@ -123,16 +123,7 @@ class VoiceHandler:
             triggers = "|".join(config.VOICE_TRIGGERS['PLAY_SPECIFIC'])
             q = re.search(rf"(?:{triggers})\s+(.*)", content)
             if q:
-                query = q.group(1).strip()
-                if query.startswith("http://") or query.startswith("https://") or "youtube.com" in query or "youtu.be" in query:
-                    self.bot.play(query)
-                else:
-                    song = self.bot.brain.recommend_song(query, chat_context=self.bot.recent_transcripts)
-                    if song:
-                        self.bot.say_async(f"Queued {song}", user=user)
-                        self.bot.play(song)
-                    else:
-                        self.bot.play(query)
+                self.bot.play(q.group(1))
             return True
 
         # 6. Play (Generic Music / "music")
