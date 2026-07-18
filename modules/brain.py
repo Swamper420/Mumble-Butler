@@ -1,3 +1,4 @@
+import re
 import threading
 from datetime import datetime
 import random
@@ -42,6 +43,18 @@ class Brain:
 
 
 
+    def _strip_thinking(self, text: str) -> str:
+        """Remove <think>...</think> blocks from LLM output."""
+        if config.LLM_DISABLE_THINKING:
+            text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+        return text.strip()
+
+    def _format_user_prompt(self, user_prompt: str) -> str:
+        """Append /no_think suffix when thinking is disabled."""
+        if config.LLM_DISABLE_THINKING:
+            return f"{user_prompt} /no_think"
+        return user_prompt
+
     def generate_response(self, user_prompt: str, max_tokens=120) -> str:
         if not self.llm: return "My brain is offline."
 
@@ -56,10 +69,11 @@ class Brain:
                 for msg in self.history:
                     history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
 
+        formatted_prompt = self._format_user_prompt(user_prompt)
         prompt = (
             f"<|im_start|>system\n{full_system}<|im_end|>\n"
             f"{history_str}"
-            f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+            f"<|im_start|>user\n{formatted_prompt}<|im_end|>\n"
             f"<|im_start|>assistant\n"
         )
 
@@ -70,6 +84,7 @@ class Brain:
             text = output['choices'][0]['text']
             # Clean tags
             text = text.replace("<|im_start|>", "").replace("<|im_end|>", "")
+            text = self._strip_thinking(text)
             response = text.strip().replace('"', '').replace("Obama:", "")
 
             self._update_history(user_prompt, response)
@@ -92,15 +107,17 @@ class Brain:
                 for msg in self.history:
                     history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
 
+        formatted_prompt = self._format_user_prompt(user_prompt)
         prompt = (
             f"<|im_start|>system\n{full_system}<|im_end|>\n"
             f"{history_str}"
-            f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+            f"<|im_start|>user\n{formatted_prompt}<|im_end|>\n"
             f"<|im_start|>assistant\n"
         )
 
         try:
             complete_response = ""
+            in_think_block = False
             with self.lock:
                 output = self.llm(
                     prompt,
@@ -115,9 +132,21 @@ class Brain:
                 token = token.replace("<|im_start|>", "").replace("<|im_end|>", "").replace("Obama:", "")
                 if token:
                     complete_response += token
+                    # Suppress <think> blocks in real-time during streaming
+                    if config.LLM_DISABLE_THINKING:
+                        if '<think>' in complete_response and not in_think_block:
+                            in_think_block = True
+                        if in_think_block:
+                            if '</think>' in complete_response:
+                                in_think_block = False
+                                # Strip all think blocks and yield the clean remainder
+                                clean = self._strip_thinking(complete_response)
+                                complete_response = clean
+                            continue
                     yield token
 
-            self._update_history(user_prompt, complete_response.strip().replace('"', ''))
+            final = self._strip_thinking(complete_response).strip().replace('"', '')
+            self._update_history(user_prompt, final)
         except Exception as e:
             yield f"Thinking error: {e}"
 
@@ -179,6 +208,7 @@ class Brain:
             recent = chat_context[-10:]
             context_str = "Recent chat vibe: " + " | ".join([f"{t['user']}: {t['text']}" for t in recent])
 
+        no_think = " /no_think" if config.LLM_DISABLE_THINKING else ""
         # 2. Generate Seeds
         # We ask for a list of seeds. We emphasize sticking to the user's request if it's specific.
         prompt = (
@@ -191,7 +221,7 @@ class Brain:
             f"<|im_start|>user\n"
             f"Context: {context_str}\n"
             f"User request: {description}\n"
-            f"Give me 5 music seeds.\n<|im_end|>\n"
+            f"Give me 5 music seeds.{no_think}\n<|im_end|>\n"
             f"<|im_start|>assistant\n"
         )
 
@@ -205,7 +235,7 @@ class Brain:
                     temperature=0.7
                 )
 
-            seed_text = output['choices'][0]['text'].strip()
+            seed_text = self._strip_thinking(output['choices'][0]['text'].strip())
             llm_seeds = [s.strip() for s in seed_text.split(',') if s.strip()]
 
             # Final seed list: [User's original request] + [LLM's similar/diverse seeds]
@@ -246,6 +276,7 @@ class Brain:
             transcript_text = "No one has spoken recently."
 
         users_text = ", ".join(active_users) if active_users else "No one else is here."
+        no_think = " /no_think" if config.LLM_DISABLE_THINKING else ""
 
         prompt = (
             f"<|im_start|>system\n"
@@ -255,7 +286,7 @@ class Brain:
             f"and briefly summarize or comment on the vibe based on the last minute of conversation if any.\n"
             f"Keep it brief (under 4 sentences), witty, and butler-like.\n<|im_end|>\n"
             f"<|im_start|>user\n"
-            f"Recent conversation:\n{transcript_text}\n\nGive the status update.\n<|im_end|>\n"
+            f"Recent conversation:\n{transcript_text}\n\nGive the status update.{no_think}\n<|im_end|>\n"
             f"<|im_start|>assistant\n"
         )
 
@@ -267,7 +298,7 @@ class Brain:
                     stop=["<|im_end|>", "\n"],
                     echo=False
                 )
-            return output['choices'][0]['text'].strip().replace('"', '')
+            return self._strip_thinking(output['choices'][0]['text'].strip().replace('"', ''))
         except Exception as e:
             print(f"Report generation error: {e}")
             return f"It is {now}. I am unable to assess the situation due to a processing error."
