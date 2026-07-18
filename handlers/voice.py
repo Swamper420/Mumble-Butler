@@ -77,10 +77,7 @@ class VoiceHandler:
 
         if not handled:
             # If no command matched, let the LLM answer
-            response = self.bot.brain.generate_response(
-                f"User {user} says: {content}"
-            )
-            self.bot.say_async(response, user=user)
+            self.bot.say_stream(f"User {user} says: {content}", user=user)
 
         return True
 

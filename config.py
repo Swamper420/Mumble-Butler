@@ -26,10 +26,9 @@ LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
 
 
 # --- AI CONFIG ---
-WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "deepdml/faster-distil-whisper-large-v3.5")
-WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cuda")
-WHISPER_COMPUTE = os.getenv("WHISPER_COMPUTE", "float16")
-WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "fi")
+MOONSHINE_MODEL_SIZE = os.getenv("MOONSHINE_MODEL_SIZE", "UsefulSensors/moonshine-streaming-medium")
+MOONSHINE_DEVICE = os.getenv("MOONSHINE_DEVICE", "cuda")
+
 
 LLM_CONTEXT_SIZE = int(os.getenv("LLM_CONTEXT_SIZE", "2000"))
 LLM_GPU_LAYERS = int(os.getenv("LLM_GPU_LAYERS", "-1"))

@@ -44,7 +44,7 @@ class MadnessBot:
         self.brain = Brain()
         self.ear = Ear()
         self.voice = Voice()
-        self.audio_manager = AudioManager()
+        self.audio_manager = AudioManager(self)
         self.wakeword_detector = WakewordDetector()
 
         # Logic Handlers
@@ -254,9 +254,8 @@ class MadnessBot:
     def process_voice_command(self, user, raw_audio, stream):
         """Transcribes audio and routes to VoiceHandler."""
         try:
-            if not self.wakeword_detector.has_wakeword(raw_audio):
-                return
             text = self.ear.transcribe(raw_audio)
+
             if text:
                 self.logger.info(f"[{user}]: {text}")
                 with self.transcript_lock:
@@ -290,6 +289,68 @@ class MadnessBot:
     def say_async(self, text, user=None):
         speech_generation = self.speech_generation
         self.loop.call_soon_threadsafe(self.queue.put_nowait, (speech_generation, text, user))
+
+    def say_stream(self, prompt, user=None):
+        speech_generation = self.speech_generation
+        task = self.loop.create_task(self._tts_stream_worker(speech_generation, prompt, user))
+        self.background_tasks.add(task)
+        task.add_done_callback(self.background_tasks.discard)
+
+    async def _tts_stream_worker(self, speech_generation, prompt, user):
+        import re
+        queue = asyncio.Queue()
+        
+        # Start LLM stream in executor
+        self.loop.run_in_executor(
+            self.executor,
+            self.brain.generate_response_stream_async,
+            prompt,
+            queue,
+            self.loop
+        )
+        
+        sentence_buffer = ""
+        sentence_delimiters = re.compile(r'(?<=[.!?])\s+|\n+')
+        
+        while True:
+            token = await queue.get()
+            if token is None:
+                break
+                
+            if speech_generation != self.speech_generation:
+                break
+                
+            sentence_buffer += token
+            
+            # Split and synthesize sentences
+            parts = sentence_delimiters.split(sentence_buffer)
+            if len(parts) > 1:
+                for sentence in parts[:-1]:
+                    sentence = sentence.strip()
+                    if sentence:
+                        await self._generate_and_play_tts(speech_generation, sentence, user)
+                sentence_buffer = parts[-1]
+                
+        # Synthesize remaining sentence
+        if speech_generation == self.speech_generation:
+            sentence = sentence_buffer.strip()
+            if sentence:
+                await self._generate_and_play_tts(speech_generation, sentence, user)
+
+    async def _generate_and_play_tts(self, speech_generation, sentence, user):
+        if self.mumble and self.mumble.sound_output:
+            pcm_data = await self.loop.run_in_executor(
+                self.executor,
+                self.voice.generate_pcm,
+                sentence,
+                None
+            )
+            if pcm_data and speech_generation == self.speech_generation:
+                try:
+                    self.mumble.sound_output.add_sound(pcm_data)
+                except Exception as e:
+                    self.logger.error(f"Error sending sound: {e}")
+
 
     def stop_speaking(self):
         self.speech_generation += 1

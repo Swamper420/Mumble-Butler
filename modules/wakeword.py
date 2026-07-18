@@ -21,27 +21,32 @@ class WakewordDetector:
                 openwakeword.utils.download_models()
 
                 print(f"🎙️ Loading openWakeWord (builtins: {config.WAKEWORD_BUILTIN_MODELS}, custom: {config.WAKEWORD_MODEL_PATHS})...")
-                # Initialize openwakeword model
-                models_to_load = []
-                if config.WAKEWORD_MODEL_PATHS:
-                    models_to_load.extend(config.WAKEWORD_MODEL_PATHS)
-                if config.WAKEWORD_BUILTIN_MODELS:
-                    models_to_load.extend(config.WAKEWORD_BUILTIN_MODELS)
-                
-                if models_to_load:
-                    try:
-                        self.model = Model(wakeword_models=models_to_load)
-                    except TypeError:
-                        # Fallback for older openwakeword versions
-                        self.model = Model(wakeword_model_paths=models_to_load)
-                else:
-                    self.model = Model()
+                self.model = self.create_model_instance()
                 print("✅ openWakeWord Loaded Successfully")
             except Exception as e:
                 print(f"❌ openWakeWord Load Error: {e}")
                 self.enabled = False
         elif config.WAKEWORD_LIBRARY == "openwakeword" and not OPENWAKEWORD_AVAILABLE:
             print("⚠️ openwakeword is configured but library is not installed/available. Wakeword detection will be bypassed (all audio processed).")
+
+    def create_model_instance(self):
+        if not self.enabled:
+            return None
+        from openwakeword.model import Model
+        models_to_load = []
+        if config.WAKEWORD_MODEL_PATHS:
+            models_to_load.extend(config.WAKEWORD_MODEL_PATHS)
+        if config.WAKEWORD_BUILTIN_MODELS:
+            models_to_load.extend(config.WAKEWORD_BUILTIN_MODELS)
+        
+        if models_to_load:
+            try:
+                return Model(wakeword_models=models_to_load)
+            except TypeError:
+                return Model(wakeword_model_paths=models_to_load)
+        else:
+            return Model()
+
 
     def has_wakeword(self, raw_pcm: bytes) -> bool:
         if not self.enabled or not self.model:

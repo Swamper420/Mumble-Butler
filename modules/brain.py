@@ -77,6 +77,62 @@ class Brain:
         except Exception as e:
             return f"Thinking error: {e}"
 
+    def generate_response_stream(self, user_prompt: str, max_tokens=120):
+        if not self.llm:
+            yield "My brain is offline."
+            return
+
+        now = datetime.now().strftime('%H:%M')
+        base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
+        full_system = f"{base_system}\nContext: It is {now}."
+
+        history_str = ""
+        if self.memory_enabled:
+            with self.lock:
+                for msg in self.history:
+                    history_str += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
+
+        prompt = (
+            f"<|im_start|>system\n{full_system}<|im_end|>\n"
+            f"{history_str}"
+            f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
+
+        try:
+            complete_response = ""
+            with self.lock:
+                output = self.llm(
+                    prompt,
+                    max_tokens=max_tokens,
+                    stop=["<|im_end|>", "<|im_start|>"],
+                    echo=False,
+                    stream=True
+                )
+            
+            for chunk in output:
+                token = chunk['choices'][0]['text']
+                token = token.replace("<|im_start|>", "").replace("<|im_end|>", "").replace("Obama:", "")
+                if token:
+                    complete_response += token
+                    yield token
+
+            self._update_history(user_prompt, complete_response.strip().replace('"', ''))
+        except Exception as e:
+            yield f"Thinking error: {e}"
+
+    def generate_response_stream_async(self, user_prompt: str, queue, loop):
+        """Runs in a background thread, puts tokens into the queue."""
+        try:
+            generator = self.generate_response_stream(user_prompt)
+            for token in generator:
+                loop.call_soon_threadsafe(queue.put_nowait, token)
+        except Exception as e:
+            loop.call_soon_threadsafe(queue.put_nowait, f"Thinking error: {e}")
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+
+
     def _update_history(self, user, ai):
         # Do not save to history if memory is disabled
         if not self.memory_enabled:

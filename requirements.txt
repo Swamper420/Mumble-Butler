@@ -1,5 +1,5 @@
 pymumble_py3
-faster-whisper
+transformers>=4.48.0
 llama-cpp-python
 kokoro
 numpy
