@@ -1,6 +1,7 @@
 import time
 import threading
 import numpy as np
+import config
 
 class UserVoiceStream:
     def __init__(self, name, bot=None):
