@@ -17,35 +17,54 @@ class WebSearcher:
         }
 
     def should_search(self, prompt: str) -> bool:
-        """Determine if a prompt likely requires real-time web search."""
+        """Determine if a prompt likely requires or benefits from real-time web search."""
         if not self.enabled:
             return False
 
         prompt_lower = prompt.lower().strip()
 
-        # Direct explicit trigger keywords
+        # Exclude trivial small talk / greetings / short conversational phrases
+        small_talk = [
+            "hi", "hello", "hey", "how are you", "who are you", "what is your name",
+            "what's your name", "thank you", "thanks", "bye", "goodbye", "good morning",
+            "good night", "ping", "shut up", "stop", "forget", "undo", "help"
+        ]
+        if prompt_lower in small_talk or prompt_lower.rstrip("?!.") in small_talk:
+            return False
+
+        # If prompt is a 1-2 word greeting (e.g. "hey obama"), skip
+        words = prompt_lower.split()
+        if len(words) <= 2 and all(w in ["hi", "hello", "hey", "obama", "bot", "there", "yo"] for w in words):
+            return False
+
+        # Direct search & factual keywords
         explicit_triggers = [
             "search", "google", "look up", "find info", "browse",
-            "what is the weather", "weather in", "weather forecast",
-            "latest news", "today's news", "who won", "live score",
-            "current price", "stock price"
+            "weather", "news", "score", "price", "who is", "what is", "where is",
+            "when is", "how to", "who won", "latest", "today", "current", "release date",
+            "capital of", "president", "prime minister", "definition", "stats", "schedule"
         ]
         if any(trig in prompt_lower for trig in explicit_triggers):
             return True
 
-        # Temporal / real-time indicators
-        temporal_keywords = [
-            "today", "now", "yesterday", "this week", "latest", "recent", "current"
-        ]
+        # Any question starters or questions containing '?'
+        question_starters = (
+            "who", "what", "where", "when", "why", "how", "which",
+            "is ", "are ", "did ", "does ", "can ", "has ", "have ", "tell me"
+        )
+        if prompt_lower.startswith(question_starters) or "?" in prompt:
+            return True
+
+        # Topic indicators
         topic_keywords = [
             "weather", "news", "score", "match", "stock", "price", "crypto",
-            "event", "election", "release date", "movie", "movie schedule"
+            "event", "election", "release", "movie", "game", "winner", "result",
+            "population", "update", "patch", "version", "specs", "location", "address"
         ]
+        if any(kw in prompt_lower for kw in topic_keywords):
+            return True
 
-        has_temporal = any(kw in prompt_lower for kw in temporal_keywords)
-        has_topic = any(kw in prompt_lower for kw in topic_keywords)
-
-        return has_temporal and has_topic
+        return False
 
     def search(self, query: str, max_results=None) -> list:
         """Perform DuckDuckGo web search and return a list of result dicts."""
@@ -72,9 +91,6 @@ class WebSearcher:
 
     def _parse_html_results(self, html: str, max_results=3) -> list:
         results = []
-        # Match result blocks in DuckDuckGo HTML
-        # Links: <a class="result__a" href="...">title</a>
-        # Snippets: <a class="result__snippet" ...>snippet</a>
         link_pattern = re.compile(
             r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
             re.IGNORECASE | re.DOTALL
@@ -91,14 +107,12 @@ class WebSearcher:
             raw_url, raw_title = links[i]
             raw_snippet = snippets[i] if i < len(snippets) else ""
 
-            # Unquote DuckDuckGo redirect URL
             actual_url = raw_url
             if "uddg=" in raw_url:
                 parsed_query = urllib.parse.parse_qs(urllib.parse.urlparse(raw_url).query)
                 if "uddg" in parsed_query:
                     actual_url = parsed_query["uddg"][0]
 
-            # Strip HTML tags from title and snippet
             title = re.sub(r'<[^>]+>', '', raw_title).strip()
             snippet = re.sub(r'<[^>]+>', '', raw_snippet).strip()
             title = urllib.parse.unquote(title)
@@ -122,6 +136,9 @@ class WebSearcher:
             context_lines.append(f"{idx}. {res['title']}")
             context_lines.append(f"   Snippet: {res['snippet']}")
             context_lines.append(f"   Source: {res['url']}")
-        context_lines.append("Use the above real-time context to accurately answer the user's request.")
+        context_lines.append(
+            "CRITICAL INSTRUCTION: Base your response strictly on the above real-time search context. "
+            "Do not guess or make up facts not supported by the search results."
+        )
 
         return "\n".join(context_lines)

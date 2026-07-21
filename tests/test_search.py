@@ -23,9 +23,9 @@ class TestWebSearcher(unittest.TestCase):
         self.assertTrue(searcher.should_search("weather forecast for today"))
         self.assertTrue(searcher.should_search("latest news about election"))
 
-        # Non-search queries
-        self.assertFalse(searcher.should_search("tell me a joke"))
-        self.assertFalse(searcher.should_search("what is a function in python"))
+        # Non-search queries (greetings & small talk)
+        self.assertFalse(searcher.should_search("hello obama"))
+        self.assertFalse(searcher.should_search("how are you"))
 
     @patch('requests.post')
     def test_search_parsing(self, mock_post):
