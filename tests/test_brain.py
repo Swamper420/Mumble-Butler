@@ -35,11 +35,7 @@ class TestGenerateResponseStopTokens(unittest.TestCase):
 
     def test_newline_not_in_stop_tokens(self):
         stop = self._captured_stop_tokens()
-        self.assertNotIn("\n", stop, "\\n must not be a stop token — it truncates multi-line answers")
-
-    def test_im_end_still_in_stop_tokens(self):
-        stop = self._captured_stop_tokens()
-        self.assertIn("<|im_end|>", stop, "<|im_end|> should remain a stop token to delimit ChatML turns")
+        self.assertIsNone(stop, "stop should be None by default so Ollama uses native model stop tokens")
 
 
 class TestSystemPromptNotBrief(unittest.TestCase):

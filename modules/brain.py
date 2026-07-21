@@ -133,13 +133,12 @@ class Brain:
         content = data.get("message", {}).get("content", "")
         return {"choices": [{"message": {"content": content}}]}
 
-    def generate_response(self, user_prompt: str, max_tokens=None) -> str:
+    def generate_response(self, user_prompt: str, max_tokens=None, stop=None) -> str:
         if not self.llm: return "My brain is offline."
 
         if max_tokens is None:
             max_tokens = getattr(config, 'LLM_MAX_TOKENS', 512)
 
-        tags = self._get_tags()
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
         full_system = f"{base_system}\nContext: It is {now}."
@@ -160,7 +159,7 @@ class Brain:
                 output = self._chat_completion(
                     messages=messages,
                     max_tokens=max_tokens,
-                    stop=tags['stop']
+                    stop=stop
                 )
 
             text = output['choices'][0]['message']['content']
@@ -175,7 +174,7 @@ class Brain:
         except Exception as e:
             return f"Thinking error: {e}"
 
-    def generate_response_stream(self, user_prompt: str, max_tokens=None):
+    def generate_response_stream(self, user_prompt: str, max_tokens=None, stop=None):
         if not self.llm:
             yield "My brain is offline."
             return
@@ -183,7 +182,6 @@ class Brain:
         if max_tokens is None:
             max_tokens = getattr(config, 'LLM_MAX_TOKENS', 512)
 
-        tags = self._get_tags()
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
         full_system = f"{base_system}\nContext: It is {now}."
@@ -208,7 +206,7 @@ class Brain:
                     output = self.llm.create_chat_completion(
                         messages=messages,
                         max_tokens=max_tokens,
-                        stop=tags['stop'],
+                        stop=stop,
                         stream=True
                     )
                 for chunk in output:
@@ -251,8 +249,8 @@ class Brain:
                         "num_ctx": getattr(config, 'LLM_CONTEXT_SIZE', 2000)
                     }
                 }
-                if tags.get('stop'):
-                    payload["options"]["stop"] = tags['stop']
+                if stop:
+                    payload["options"]["stop"] = stop
 
                 with self.lock:
                     response = requests.post(url, json=payload, stream=True, timeout=60)
@@ -392,39 +390,10 @@ class Brain:
             recent = chat_context[-10:]
             context_str = "Recent chat vibe: " + " | ".join([f"{t['user']}: {t['text']}" for t in recent])
 
-        no_think = " /no_think" if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
-        tags = self._get_tags()
-        
-        system_content = (
-            "You are a master music recommender and curator bot.\n"
-            "Your job is to analyze the user's music request, identify the intent and vibe, and return structured recommendations.\n"
-            "Analyze the user request and recent chat context (if provided).\n"
-            "Determine the intent:\n"
-            "- SPECIFIC: The user is asking for a specific artist, song, or album (e.g. 'play Queen', 'play Yesterday').\n"
-            "- GENRE_MOOD: The user is asking for a genre, mood, activity, or era (e.g. 'chill lofi', 'workout music', '80s pop').\n"
-            "- OPEN: The user is asking for a general/random recommendation or didn't specify details.\n\n"
-            "Then, generate a list of 5-7 real, existing songs (Artist - Song Title) that best match this request. "
-            "If the request is SPECIFIC to a song, that exact song MUST be the first recommendation. "
-            "If the request is SPECIFIC to an artist, the recommendations must be their most popular tracks or highly similar songs.\n"
-            "If the request is GENRE_MOOD, recommendations must fit the mood/genre/energy level.\n"
-            "If the request is OPEN, use the recent conversation vibe (if any) to curate something suitable, or suggest a high-quality track from any good genre.\n\n"
-            "Respond strictly in this format, with no thinking blocks or extra conversational text:\n"
-            "[INTENT]\n"
-            "<SPECIFIC, GENRE_MOOD, or OPEN>\n"
-            "[VIBE]\n"
-            "<Brief description of the detected vibe/mood/genre>\n"
-            "[RECOMMENDATIONS]\n"
-            "<Artist 1> - <Song Title 1>\n"
-            "<Artist 2> - <Song Title 2>\n"
-            "<Artist 3> - <Song Title 3>\n"
-            "<Artist 4> - <Song Title 4>\n"
-            "<Artist 5> - <Song Title 5>"
-        )
-
         user_content = (
             f"Context: {context_str}\n"
             f"User request: {description}\n"
-            f"Generate recommendations.{no_think}"
+            f"Generate recommendations."
         )
 
         messages = [
@@ -437,7 +406,6 @@ class Brain:
                 output = self._chat_completion(
                     messages=messages,
                     max_tokens=250,
-                    stop=tags['stop'],
                     temperature=0.6
                 )
 
@@ -487,9 +455,7 @@ class Brain:
             transcript_text = "No one has spoken recently."
 
         users_text = ", ".join(active_users) if active_users else "No one else is here."
-        no_think = " /no_think" if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
 
-        tags = self._get_tags()
         system_content = (
             f"{config.SYSTEM_PROMPT} "
             f"It is currently {now}. You are giving a periodic hourly status update to the room. "
@@ -497,7 +463,7 @@ class Brain:
             f"and briefly summarize or comment on the vibe based on the last minute of conversation if any.\n"
             f"Keep it brief (under 4 sentences), witty, and butler-like."
         )
-        user_content = f"Recent conversation:\n{transcript_text}\n\nGive the status update.{no_think}"
+        user_content = f"Recent conversation:\n{transcript_text}\n\nGive the status update."
         messages = [
             {"role": "system", "content": system_content},
             {"role": "user", "content": user_content}
@@ -507,8 +473,7 @@ class Brain:
             with self.lock:
                 output = self._chat_completion(
                     messages=messages,
-                    max_tokens=350,
-                    stop=tags['stop']
+                    max_tokens=350
                 )
             return self._strip_thinking(output['choices'][0]['message']['content'].strip().replace('"', ''))
         except Exception as e:
