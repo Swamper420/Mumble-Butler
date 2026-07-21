@@ -39,6 +39,13 @@ class MusicRecommender:
             return ""
         import re
         normalized = track_name.lower().strip()
+        # Strip square brackets like [Official Video], [HD], etc.
+        normalized = re.sub(r'\[.*?\]', '', normalized)
+        # Strip parens containing common noise like (remaster...), (live...), (feat...)
+        normalized = re.sub(r'\((?:[^\)]*(?:remaster|live|deluxe|version|edition|feat|ft|audio|video|edit|mix)[^\)]*)\)', '', normalized)
+        # Strip standalone feat / ft clauses
+        normalized = re.sub(r'\b(?:feat|ft)\.?\s+[^\s-]+', '', normalized)
+        # Clean non-alphanumeric chars
         normalized = re.sub(r'[^a-z0-9\s]', ' ', normalized)
         return ' '.join(normalized.split())
 
@@ -54,7 +61,7 @@ class MusicRecommender:
         Queries iTunes with a track string (e.g., 'Artist - Title') to see if it exists.
         Returns the formatted 'Artist - Title' from iTunes if found, or None otherwise.
         """
-        if not track_str or track_str.lower() == "random music":
+        if not track_str or track_str.lower() in ("random music", "music"):
             return None
         try:
             url = "https://itunes.apple.com/search"
@@ -76,60 +83,37 @@ class MusicRecommender:
             print(f"⚠️ iTunes verification error for '{track_str}': {e}")
         return None
 
-    def get_recommendation(self, seeds):
+    def get_recommendation(self, candidates, allow_history_override=False):
         """
-        Takes a list of seeds (artists, genres, or keywords) and returns a 'Artist - Title' string.
-        Seeds should be provided in priority order.
+        Takes a list of recommended track strings (e.g. ['Artist - Title', ...]) or fallback seeds,
+        filters against history, optionally verifies on iTunes, and returns a selected track string.
         """
-        if not seeds:
+        if not candidates:
             return None
 
-        # Keep track of first seed's results for fallback if everything is in history
-        first_seed_all_tracks = []
-
-        for idx, seed in enumerate(seeds):
-            # Try iTunes Search API
-            try:
-                # Use 'music' entity to get songs
-                url = "https://itunes.apple.com/search"
-                params = {
-                    "term": seed,
-                    "limit": 20,
-                    "entity": "song",
-                    "media": "music"
-                }
-                response = requests.get(url, params=params, timeout=5)
-                response.raise_for_status()
-                data = response.json()
-
-                results = data.get('results', [])
-                if not results:
-                    continue
-
-                # Filter out history
-                available_tracks = []
-                for track in results:
-                    track_str = f"{track.get('artistName')} - {track.get('trackName')}"
-                    if idx == 0:
-                        first_seed_all_tracks.append(track_str)
-                    if not self.is_in_history(track_str):
-                        available_tracks.append(track_str)
-
-                if available_tracks:
-                    # Pick a random one from the available tracks
-                    selection = random.choice(available_tracks)
-                    self.add_to_history(selection)
-                    return selection
-
-            except Exception as e:
-                print(f"⚠️ Recommender API error for seed '{seed}': {e}")
+        # Filter out history
+        available_tracks = []
+        for track in candidates:
+            if not track or track.lower() in ("random music", "music"):
                 continue
+            
+            # Standardize / verify on iTunes if possible
+            verified = self.verify_track_on_itunes(track)
+            final_track = verified if verified else track.strip()
 
-        # Fallback if everything is in history, but we have first_seed results
-        if first_seed_all_tracks:
-            selection = random.choice(first_seed_all_tracks)
+            if allow_history_override or not self.is_in_history(final_track):
+                available_tracks.append(final_track)
+
+        if available_tracks:
+            selection = available_tracks[0]
             self.add_to_history(selection)
             return selection
 
-        return None
+        # Fallback if all candidates were in history: pick first candidate
+        fallback_track = candidates[0].strip()
+        verified = self.verify_track_on_itunes(fallback_track)
+        selection = verified if verified else fallback_track
+        self.add_to_history(selection)
+        return selection
+
 

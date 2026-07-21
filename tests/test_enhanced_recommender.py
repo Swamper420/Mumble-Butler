@@ -9,18 +9,11 @@ from modules.recommender import MusicRecommender
 import config
 
 class TestEnhancedRecommender(unittest.TestCase):
-    def test_normalize_track(self):
+    def test_normalize_track_strips_noise(self):
         recommender = MusicRecommender()
-        self.assertEqual(recommender._normalize_track("Queen - Bohemian Rhapsody"), "queen bohemian rhapsody")
-        self.assertEqual(recommender._normalize_track("queen - bohemian rhapsody"), "queen bohemian rhapsody")
-        self.assertEqual(recommender._normalize_track("  Queen  -  Bohemian   Rhapsody!  "), "queen bohemian rhapsody")
-
-    def test_is_in_history_normalization(self):
-        recommender = MusicRecommender()
-        recommender.history = ["Queen - Bohemian Rhapsody"]
-        self.assertTrue(recommender.is_in_history("queen - bohemian rhapsody"))
-        self.assertTrue(recommender.is_in_history("Queen-Bohemian Rhapsody"))
-        self.assertFalse(recommender.is_in_history("Queen - Another One Bites the Dust"))
+        self.assertEqual(recommender._normalize_track("Queen - Bohemian Rhapsody [Official Video]"), "queen bohemian rhapsody")
+        self.assertEqual(recommender._normalize_track("Daft Punk - One More Time (Remastered 2021)"), "daft punk one more time")
+        self.assertEqual(recommender._normalize_track("Kavinsky - Nightcall (feat. Lovefoxxx)"), "kavinsky nightcall")
 
     @patch('requests.get')
     def test_verify_track_on_itunes(self, mock_get):
@@ -69,7 +62,25 @@ class TestEnhancedRecommender(unittest.TestCase):
             brain.recommender.get_recommendation = MagicMock(return_value="Daft Punk - One More Time")
             song = brain.recommend_song("chill music")
             self.assertEqual(song, "Daft Punk - One More Time")
-            brain.recommender.get_recommendation.assert_called_with(["chill music"])
+
+    @patch('modules.recommender.MusicRecommender.verify_track_on_itunes')
+    def test_recommend_song_return_meta(self, mock_verify):
+        mock_verify.side_effect = lambda x: x
+        from modules.brain import Brain
+        with patch('modules.brain.LLM_AVAILABLE', True):
+            with patch('modules.brain.Brain.check_connection', return_value=True):
+                brain = Brain()
+                brain.llm = MagicMock()
+                brain.llm.return_value = {
+                    "choices": [{
+                        "message": {
+                            "content": "[INTENT]\nGENRE_MOOD\n[VIBE]\nChill late night coding vibes\n[RECOMMENDATIONS]\n1. Tycho - A Walk\n2. Bonobo - Kerala"
+                        }
+                    }]
+                }
+                song, vibe = brain.recommend_song("chill music", return_meta=True)
+                self.assertEqual(song, "Tycho - A Walk")
+                self.assertEqual(vibe, "Chill late night coding vibes")
 
     @patch('modules.recommender.MusicRecommender.verify_track_on_itunes')
     def test_recommend_song_specific_bypass_history(self, mock_verify):

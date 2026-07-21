@@ -397,31 +397,55 @@ class Brain:
                         
         return intent, vibe, recommendations
 
-    def recommend_song(self, description, chat_context=None):
+    def recommend_song(self, description, chat_context=None, return_meta=False):
         """
-        Sophisticated recommendation:
-        1. Contextual vibe analysis.
-        2. LLM seed/track list generation with intent recognition.
+        Fully LLM-driven music recommendation:
+        1. Contextual vibe analysis using room chat history & user prompt.
+        2. LLM DJ generation of candidate 'Artist - Track Title' songs and vibe summary.
         3. iTunes verification & standardization.
         4. History filtering.
         """
+        system_content = (
+            "You are an expert music DJ and recommendation engine for a voice chat butler.\n"
+            "Analyze the recent room chat context and the user request to recommend songs.\n"
+            "Respond strictly in the following format:\n\n"
+            "[INTENT]\n"
+            "<SPECIFIC if user requested an exact song/artist, GENRE_MOOD if genre/vibe requested, or OPEN if random/contextual>\n\n"
+            "[VIBE]\n"
+            "<A concise 1-sentence summary of the music vibe, e.g. 'Upbeat 80s synthwave for late night coding'>\n\n"
+            "[RECOMMENDATIONS]\n"
+            "1. Artist Name - Track Title\n"
+            "2. Artist Name - Track Title\n"
+            "3. Artist Name - Track Title\n"
+            "4. Artist Name - Track Title\n"
+        )
+
+        fallback_tracks = [
+            "Daft Punk - One More Time",
+            "Queen - Bohemian Rhapsody",
+            "The Midnight - Sunset",
+            "Miles Davis - So What",
+            "Kavinsky - Nightcall"
+        ]
+
         if not self.llm:
-            print("🧠 LLM is offline. Falling back to direct iTunes keyword search.")
-            fallback_seeds = [description] if description and description != "random music" else []
-            if not fallback_seeds:
-                fallback_seeds = ["classic rock", "pop", "electronic", "jazz", "lofi"]
-                random.shuffle(fallback_seeds)
-            return self.recommender.get_recommendation(fallback_seeds)
+            print("🧠 LLM is offline. Selecting from curated fallback catalog.")
+            candidate_list = [description] if description and description != "random music" and " - " in description else fallback_tracks
+            song = self.recommender.get_recommendation(candidate_list)
+            vibe_summary = f"Curated selection for '{description}'" if description and description != "random music" else "Curated classic vibe"
+            return (song, vibe_summary) if return_meta else song
 
         context_str = ""
         if chat_context:
             recent = chat_context[-10:]
-            context_str = "Recent chat vibe: " + " | ".join([f"{t['user']}: {t['text']}" for t in recent])
+            context_str = " | ".join([f"{t['user']}: {t['text']}" for t in recent])
+        else:
+            context_str = "No recent chat history."
 
         user_content = (
-            f"Context: {context_str}\n"
-            f"User request: {description}\n"
-            f"Generate recommendations."
+            f"Recent chat context: {context_str}\n"
+            f"User request: {description or 'Recommend a good song for the room'}\n"
+            f"Generate recommendations matching the vibe."
         )
 
         messages = [
@@ -433,8 +457,8 @@ class Brain:
             with self.lock:
                 output = self._chat_completion(
                     messages=messages,
-                    max_tokens=250,
-                    temperature=0.6
+                    max_tokens=300,
+                    temperature=0.7
                 )
 
             llm_text = self._strip_thinking(output['choices'][0]['message']['content'].strip())
@@ -444,33 +468,26 @@ class Brain:
             print(f"🎵 LLM Recommendations: {recommendations}")
             
             if not recommendations:
-                print("⚠️ LLM didn't return formatted recommendations. Trying fallback keyword search.")
-                return self.recommender.get_recommendation([description])
+                print("⚠️ LLM didn't return formatted recommendations. Trying fallback track list.")
+                candidate_list = [description] if description and " - " in description else fallback_tracks
+                song = self.recommender.get_recommendation(candidate_list)
+                vibe_summary = vibe or "Eclectic choice"
+                return (song, vibe_summary) if return_meta else song
 
-            for i, track in enumerate(recommendations):
-                is_explicit_request = (intent == "SPECIFIC" and i == 0)
-                
-                if not is_explicit_request and self.recommender.is_in_history(track):
-                    continue
-                
-                verified = self.recommender.verify_track_on_itunes(track)
-                final_track = verified if verified else track
-                
-                if not is_explicit_request and self.recommender.is_in_history(final_track):
-                    continue
-                
-                self.recommender.add_to_history(final_track)
-                return final_track
-
-            fallback_track = recommendations[0]
-            verified = self.recommender.verify_track_on_itunes(fallback_track)
-            final_track = verified if verified else fallback_track
-            self.recommender.add_to_history(final_track)
-            return final_track
+            is_specific = (intent == "SPECIFIC")
+            selected_track = self.recommender.get_recommendation(
+                recommendations,
+                allow_history_override=is_specific
+            )
+            vibe_summary = vibe or "Vibe-matched selection"
+            
+            return (selected_track, vibe_summary) if return_meta else selected_track
 
         except Exception as e:
-            print(f"Recommendation error: {e}. Trying fallback keyword search.")
-            return self.recommender.get_recommendation([description])
+            print(f"⚠️ Recommendation error: {e}. Using fallback track selection.")
+            song = self.recommender.get_recommendation(fallback_tracks)
+            return (song, "Fallback vibe") if return_meta else song
+
 
     def generate_hourly_report(self, active_users, recent_transcripts):
         if not self.llm: return None

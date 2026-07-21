@@ -131,9 +131,16 @@ class TextHandler:
                 self.bot.send_chat("<b>Usage:</b> ?remind [in] &lt;amount&gt; &lt;second/minute/hour&gt;s [about] &lt;message&gt;<br/><i>Example: ?remind in 10 minutes about standup</i>")
 
         elif cmd == config.TEXT_TRIGGERS['RECOMMEND']:
-            song = self.bot.brain.recommend_song(arg or "random music", chat_context=self.bot.recent_transcripts)
+            song, vibe = self.bot.brain.recommend_song(
+                arg or "random music",
+                chat_context=self.bot.recent_transcripts,
+                return_meta=True
+            )
             if song:
-                self.bot.send_chat(f"Queued: {song}")
+                msg = f"🎵 <b>Queued:</b> {song}"
+                if vibe:
+                    msg += f"<br/><i>Vibe: {vibe}</i>"
+                self.bot.send_chat(msg)
                 self.bot.play(song)
 
         elif cmd == config.TEXT_TRIGGERS['SEARCH']:
