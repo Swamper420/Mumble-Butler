@@ -338,7 +338,7 @@ class MadnessBot:
 
         try:
             # Ensure the directory exists
-            save_dir = "data/saysaves"
+            save_dir = getattr(config, 'SAYSAVE_SAVE_DIR', "data/saysaves")
             os.makedirs(save_dir, exist_ok=True)
 
             # Generate unique filename

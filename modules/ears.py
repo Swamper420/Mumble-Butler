@@ -39,8 +39,9 @@ class Ear:
         if len(audio_float) == 0:
             return ""
 
-        # 2. Trim leading and trailing silence (< 0.001 amplitude)
-        non_silent = np.where(np.abs(audio_float) > 0.001)[0]
+        # 2. Trim leading and trailing silence
+        trim_thresh = getattr(config, 'SILENCE_TRIM_THRESHOLD', 0.001)
+        non_silent = np.where(np.abs(audio_float) > trim_thresh)[0]
         if len(non_silent) > 0:
             audio_float = audio_float[non_silent[0]:non_silent[-1] + 1]
         else:

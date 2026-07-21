@@ -36,6 +36,9 @@ class TestWebServer(unittest.TestCase):
         keys = [item["key"] for item in config_items]
 
         self.assertIn("TEST_DYNAMIC_VARIABLE_XYZ", keys)
+        self.assertIn("OLLAMA_KEEP_ALIVE", keys)
+        self.assertIn("LLM_CONTEXT_SIZE", keys)
+        self.assertIn("OLLAMA_TIMEOUT", keys)
         
         # Find item
         target = next(i for i in config_items if i["key"] == "TEST_DYNAMIC_VARIABLE_XYZ")

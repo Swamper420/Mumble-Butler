@@ -34,7 +34,8 @@ class Brain:
         try:
             host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
             url = f"{host}/api/tags"
-            res = requests.get(url, timeout=3)
+            timeout = getattr(config, 'OLLAMA_CONNECT_TIMEOUT', 3)
+            res = requests.get(url, timeout=timeout)
             if res.status_code == 200:
                 print("🧠 Connected to Ollama API.")
                 self.llm = True
@@ -115,22 +116,26 @@ class Brain:
 
         host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
         url = f"{host}/api/chat"
+        keep_alive = getattr(config, 'OLLAMA_KEEP_ALIVE', '15m')
+        context_size = getattr(config, 'LLM_CONTEXT_SIZE', 2048)
+        default_temp = getattr(config, 'LLM_TEMPERATURE', 0.7)
+        timeout = getattr(config, 'OLLAMA_TIMEOUT', 60)
+
         payload = {
             "model": getattr(config, 'OLLAMA_MODEL', 'gemma4-e2b'),
             "messages": messages,
             "stream": False,
-            "keep_alive": "15m",
+            "keep_alive": keep_alive,
             "options": {
                 "num_predict": num_predict,
-                "num_ctx": getattr(config, 'LLM_CONTEXT_SIZE', 2000)
+                "num_ctx": context_size,
+                "temperature": temperature if temperature is not None else default_temp
             }
         }
-        if temperature is not None:
-            payload["options"]["temperature"] = temperature
         if stop:
             payload["options"]["stop"] = stop
 
-        response = requests.post(url, json=payload, timeout=30)
+        response = requests.post(url, json=payload, timeout=timeout)
         response.raise_for_status()
         data = response.json()
         content = data.get("message", {}).get("content", "")
@@ -267,21 +272,27 @@ class Brain:
 
                 host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
                 url = f"{host}/api/chat"
+                keep_alive = getattr(config, 'OLLAMA_KEEP_ALIVE', '15m')
+                context_size = getattr(config, 'LLM_CONTEXT_SIZE', 2048)
+                default_temp = getattr(config, 'LLM_TEMPERATURE', 0.7)
+                timeout = getattr(config, 'OLLAMA_TIMEOUT', 60)
+
                 payload = {
                     "model": getattr(config, 'OLLAMA_MODEL', 'gemma4-e2b'),
                     "messages": messages,
                     "stream": True,
-                    "keep_alive": "15m",
+                    "keep_alive": keep_alive,
                     "options": {
                         "num_predict": num_predict,
-                        "num_ctx": getattr(config, 'LLM_CONTEXT_SIZE', 2000)
+                        "num_ctx": context_size,
+                        "temperature": default_temp
                     }
                 }
                 if stop:
                     payload["options"]["stop"] = stop
 
                 with self.lock:
-                    response = requests.post(url, json=payload, stream=True, timeout=60)
+                    response = requests.post(url, json=payload, stream=True, timeout=timeout)
                 response.raise_for_status()
 
                 yielded_any = False
@@ -342,11 +353,12 @@ class Brain:
         if not self.memory_enabled:
             return
 
+        max_hist = getattr(config, 'LLM_MAX_HISTORY', 20)
         with self.lock:
             self.history.append({"role": "user", "content": user})
             self.history.append({"role": "assistant", "content": ai})
-            if len(self.history) > 20:
-                self.history = self.history[-20:]
+            if len(self.history) > max_hist:
+                self.history = self.history[-max_hist:]
 
     def reset_memory(self):
         with self.lock:

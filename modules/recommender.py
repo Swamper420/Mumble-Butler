@@ -65,13 +65,15 @@ class MusicRecommender:
             return None
         try:
             url = "https://itunes.apple.com/search"
+            limit = getattr(config, 'RECOMMENDER_ITUNES_LIMIT', 3)
+            timeout = getattr(config, 'RECOMMENDER_ITUNES_TIMEOUT', 5)
             params = {
                 "term": track_str,
-                "limit": 3,
+                "limit": limit,
                 "entity": "song",
                 "media": "music"
             }
-            response = requests.get(url, params=params, timeout=5)
+            response = requests.get(url, params=params, timeout=timeout)
             response.raise_for_status()
             data = response.json()
 

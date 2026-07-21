@@ -29,9 +29,15 @@ CHIME_FILE = os.getenv("CHIME_FILE", "chime.wav")
 # --- OLLAMA / LLM CONFIG ---
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4-e2b")
+OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "15m")
+OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "60"))
+OLLAMA_CONNECT_TIMEOUT = int(os.getenv("OLLAMA_CONNECT_TIMEOUT", "3"))
 LLM_PROMPT_FORMAT = os.getenv("LLM_PROMPT_FORMAT", "gemma") # "gemma" or "chatml"
 LLM_DISABLE_THINKING = os.getenv("LLM_DISABLE_THINKING", "True").lower() == "true"
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
+LLM_CONTEXT_SIZE = int(os.getenv("LLM_CONTEXT_SIZE", "2048"))
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+LLM_MAX_HISTORY = int(os.getenv("LLM_MAX_HISTORY", "20"))
 OLLAMA_THINK_BUFFER = int(os.getenv("OLLAMA_THINK_BUFFER", "1024"))
 WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "True").lower() == "true"
 WEB_SEARCH_MAX_RESULTS = int(os.getenv("WEB_SEARCH_MAX_RESULTS", "3"))
@@ -117,11 +123,17 @@ TEXT_TRIGGERS = {
 
 # --- AUDIO PARAMETERS ---
 SILENCE_THRESHOLD = float(os.getenv("SILENCE_THRESHOLD", "0.5"))
+SILENCE_TRIM_THRESHOLD = float(os.getenv("SILENCE_TRIM_THRESHOLD", "0.001"))
 MIN_AUDIO_LENGTH = float(os.getenv("MIN_AUDIO_LENGTH", "0.3"))
+MAX_AUDIO_BUFFER_SECONDS = float(os.getenv("MAX_AUDIO_BUFFER_SECONDS", "10.0"))
 POLL_RATE = float(os.getenv("POLL_RATE", "0.1"))
+SAYSAVE_SAVE_DIR = os.getenv("SAYSAVE_SAVE_DIR", "data/saysaves")
+HOURLY_REPORT_ENABLED = os.getenv("HOURLY_REPORT_ENABLED", "True").lower() == "true"
 
 # --- RECOMMENDATION SYSTEM ---
 MUSIC_HISTORY_FILE = os.getenv("MUSIC_HISTORY_FILE", "data/music_history.json")
 RECOMMENDER_MAX_HISTORY = int(os.getenv("RECOMMENDER_MAX_HISTORY", "50"))
+RECOMMENDER_ITUNES_LIMIT = int(os.getenv("RECOMMENDER_ITUNES_LIMIT", "3"))
+RECOMMENDER_ITUNES_TIMEOUT = int(os.getenv("RECOMMENDER_ITUNES_TIMEOUT", "5"))
 
 

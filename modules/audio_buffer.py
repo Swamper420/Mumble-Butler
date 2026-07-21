@@ -25,7 +25,8 @@ class UserVoiceStream:
     def add_data(self, pcm_data):
         with self.lock:
             self.buffer.extend(pcm_data)
-            max_bytes = 48000 * 2 * 10  # 10 seconds cutoff
+            max_seconds = getattr(config, 'MAX_AUDIO_BUFFER_SECONDS', 10.0)
+            max_bytes = int(48000 * 2 * max_seconds)
             if len(self.buffer) > max_bytes:
                 self.buffer = self.buffer[-max_bytes:]
             self.last_packet_time = time.time()
