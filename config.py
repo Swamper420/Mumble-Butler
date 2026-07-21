@@ -23,7 +23,6 @@ CHIME_FILE = os.getenv("CHIME_FILE", "chime.wav")
 # --- OLLAMA / LLM CONFIG ---
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4-e2b")
-LLM_MODEL_PATH = os.getenv("LLM_MODEL_PATH", "models/gemma-3-8b-it-q4_k_m.gguf")
 LLM_PROMPT_FORMAT = os.getenv("LLM_PROMPT_FORMAT", "gemma") # "gemma" or "chatml"
 LLM_DISABLE_THINKING = os.getenv("LLM_DISABLE_THINKING", "True").lower() == "true"
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
@@ -37,8 +36,6 @@ MOONSHINE_MODEL_SIZE = os.getenv("MOONSHINE_MODEL_SIZE", "UsefulSensors/moonshin
 MOONSHINE_DEVICE = os.getenv("MOONSHINE_DEVICE", "cuda")
 
 
-LLM_CONTEXT_SIZE = int(os.getenv("LLM_CONTEXT_SIZE", "2000"))
-LLM_GPU_LAYERS = int(os.getenv("LLM_GPU_LAYERS", "-1"))
 ACTIVATION_KEYWORDS = os.getenv("ACTIVATION_KEYWORDS", "obama,opama,opal,opa").split(",")
 MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "True").lower() == "true"
 
@@ -48,31 +45,19 @@ WAKEWORD_MODEL_PATHS = [p.strip() for p in os.getenv("WAKEWORD_MODEL_PATHS", "")
 WAKEWORD_BUILTIN_MODELS = [m.strip() for m in os.getenv("WAKEWORD_BUILTIN_MODELS", "hey_jarvis").split(",") if m.strip()]
 WAKEWORD_THRESHOLD = float(os.getenv("WAKEWORD_THRESHOLD", "0.5"))
 
-TTS_ENGINE = os.getenv("TTS_ENGINE", "chatterbox-turbo")
-
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", (
     "You are 'Obama', a suave and savvy digital butler from the 2000s. "
     "You are impeccable, polite, and efficiently helpful. "
     "Keep your responses short and concise — ideally one or two sentences. "
-    "Always respond in ENGLISH."
-    + (" You are encouraged to use expressive paralinguistic tags like [laugh], [sigh], [gasp], [cough], [chuckle] in your responses to sound natural." if TTS_ENGINE == "chatterbox-turbo" else "")
+    "Always respond in ENGLISH. "
+    "You are encouraged to use expressive paralinguistic tags like [laugh], [sigh], [gasp], [cough], [chuckle] in your responses to sound natural."
 ))
 
 SHUTUP_KEYWORDS = os.getenv("SHUTUP_KEYWORDS", "shut up,shutup,be quiet").split(",")
 
-KOKORO_VOICE_ID = os.getenv("KOKORO_VOICE_ID", 'am_michael')
-KOKORO_SPEED = float(os.getenv("KOKORO_SPEED", "0.9"))
-
 CHATTERBOX_VOICE_DIR = os.getenv("CHATTERBOX_VOICE_DIR", "data/voices")
 CHATTERBOX_DEFAULT_VOICE = os.getenv("CHATTERBOX_DEFAULT_VOICE", "michael")
 CHATTERBOX_TEMPERATURE = float(os.getenv("CHATTERBOX_TEMPERATURE", "0.8"))
-
-AVAILABLE_VOICES = {
-    'heart': 'af_heart', 'bella': 'af_bella', 'nicole': 'af_nicole',
-    'michael': 'am_michael', 'emma': 'bf_emma', 'george': 'bm_george',
-    'alpha': 'jf_alpha', 'siwis': 'ff_siwis', 'alpha2': 'hf_alpha',
-    'sara': 'if_sara'
-}
 
 # --- VOICE COMMAND TRIGGERS ---
 VOICE_TRIGGERS = {

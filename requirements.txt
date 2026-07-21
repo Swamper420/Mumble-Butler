@@ -1,7 +1,6 @@
 pymumble_py3
 transformers>=4.48.0
 requests
-kokoro
 numpy
 python-dotenv
 rapidfuzz

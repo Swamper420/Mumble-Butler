@@ -9,7 +9,7 @@ A voice-activated AI butler for Mumble. Listens for a wake word, transcribes spe
 | 🎙️ **Speech-to-Text** | [Moonshine](https://github.com/UsefulSensors/moonshine) streaming model via HuggingFace Transformers |
 | 🔔 **Wake Word** | [openWakeWord](https://github.com/dscripka/openWakeWord) with real-time streaming detection + keyword fallback with fuzzy matching ([rapidfuzz](https://github.com/rapidfuzz/RapidFuzz)) |
 | 🧠 **LLM API** | External [Ollama](https://ollama.com) API integration supporting any model with streaming responses |
-| 🗣️ **Text-to-Speech** | [Kokoro](https://github.com/hexgrad/kokoro) with 10 selectable voices, sentence-level streaming for low latency |
+| 🗣️ **Text-to-Speech** | [Chatterbox-Turbo](https://github.com/resemble-ai/chatterbox) voice cloning with sentence-level streaming for low latency |
 | 🎵 **Music** | YouTube playback, LLM-seeded recommendations via iTunes API, history-aware deduplication — all via [botamusique](https://github.com/azlux/botamusique) |
 | 💬 **Dual Interface** | Full command set via both voice and Mumble text chat |
 | 🕒 **Hourly Reports** | Context-aware room status updates based on who's present and recent conversation |
@@ -38,7 +38,7 @@ python main.py
 main.py → MadnessBot (bot.py)
 ├── Brain         — LLM inference, memory, music recommendations
 ├── Ear           — Moonshine speech-to-text
-├── Voice         — Kokoro text-to-speech
+├── Voice         — Chatterbox-Turbo text-to-speech
 ├── AudioManager  — Voice activity detection & per-user buffering
 ├── WakewordDetector — openWakeWord streaming detection
 ├── VoiceHandler  — Voice command routing (fuzzy keyword matching)
@@ -83,7 +83,7 @@ main.py → MadnessBot (bot.py)
 
 ### TTS Voices
 
-`michael` *(default)* · `heart` · `bella` · `nicole` · `emma` · `george` · `alpha` · `siwis` · `sara`
+Custom voice reference WAV files stored in `data/voices/` (e.g. `michael.wav` *default*)
 
 ## Configuration
 
