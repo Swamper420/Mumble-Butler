@@ -1,4 +1,4 @@
-"""Tests for Brain.generate_response behaviour (no llama_cpp required)."""
+"""Tests for Brain.generate_response behaviour."""
 import sys
 import types
 import unittest

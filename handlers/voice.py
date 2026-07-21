@@ -35,7 +35,7 @@ class VoiceHandler:
 
         Detection order:
         1. Exact prefix regex — fastest, zero false positives.
-        2. Fuzzy word scan   — catches Whisper mistranscriptions (needs rapidfuzz).
+        2. Fuzzy word scan   — catches STT mistranscriptions (needs rapidfuzz).
         """
         # 1. Exact match
         match = self.activation_pattern.search(clean_text)

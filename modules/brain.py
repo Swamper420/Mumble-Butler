@@ -53,7 +53,7 @@ class Brain:
 
     def _get_tags(self):
         fmt = getattr(config, 'LLM_PROMPT_FORMAT', 'chatml').lower()
-        model_setting = getattr(config, 'OLLAMA_MODEL', getattr(config, 'LLM_MODEL_PATH', '')).lower()
+        model_setting = getattr(config, 'OLLAMA_MODEL', '').lower()
         if fmt == 'gemma' and 'qwen' in model_setting:
             fmt = 'chatml'
 
@@ -86,7 +86,7 @@ class Brain:
 
     def _format_user_prompt(self, user_prompt: str) -> str:
         """Append /no_think suffix when thinking is disabled and using a Gemma 3 model."""
-        model_setting = getattr(config, 'OLLAMA_MODEL', getattr(config, 'LLM_MODEL_PATH', '')).lower()
+        model_setting = getattr(config, 'OLLAMA_MODEL', '').lower()
         if getattr(config, 'LLM_DISABLE_THINKING', False) and 'gemma-3' in model_setting:
             return f"{user_prompt} /no_think"
         return user_prompt
