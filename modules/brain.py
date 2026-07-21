@@ -108,6 +108,9 @@ class Brain:
         if callable(self.llm):
             return self.llm(messages=messages, max_tokens=max_tokens)
 
+        think_buffer = getattr(config, 'OLLAMA_THINK_BUFFER', 1024)
+        num_predict = max_tokens + think_buffer if think_buffer else max_tokens
+
         host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
         url = f"{host}/api/chat"
         payload = {
@@ -115,7 +118,7 @@ class Brain:
             "messages": messages,
             "stream": False,
             "options": {
-                "num_predict": max_tokens,
+                "num_predict": num_predict,
                 "num_ctx": getattr(config, 'LLM_CONTEXT_SIZE', 2000)
             }
         }
@@ -234,6 +237,9 @@ class Brain:
                                 continue
                         yield token
             else:
+                think_buffer = getattr(config, 'OLLAMA_THINK_BUFFER', 1024)
+                num_predict = max_tokens + think_buffer if think_buffer else max_tokens
+
                 host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
                 url = f"{host}/api/chat"
                 payload = {
@@ -241,7 +247,7 @@ class Brain:
                     "messages": messages,
                     "stream": True,
                     "options": {
-                        "num_predict": max_tokens,
+                        "num_predict": num_predict,
                         "num_ctx": getattr(config, 'LLM_CONTEXT_SIZE', 2000)
                     }
                 }

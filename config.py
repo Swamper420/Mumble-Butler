@@ -27,6 +27,7 @@ LLM_MODEL_PATH = os.getenv("LLM_MODEL_PATH", "models/gemma-3-8b-it-q4_k_m.gguf")
 LLM_PROMPT_FORMAT = os.getenv("LLM_PROMPT_FORMAT", "gemma") # "gemma" or "chatml"
 LLM_DISABLE_THINKING = os.getenv("LLM_DISABLE_THINKING", "True").lower() == "true"
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
+OLLAMA_THINK_BUFFER = int(os.getenv("OLLAMA_THINK_BUFFER", "1024"))
 
 
 # --- AI CONFIG ---
