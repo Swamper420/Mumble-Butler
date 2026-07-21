@@ -22,6 +22,8 @@ class Ear:
                 print(f"👂 Loading Moonshine ({self.device})...")
                 self.processor = AutoProcessor.from_pretrained(config.MOONSHINE_MODEL_SIZE)
                 self.model = MoonshineStreamingForConditionalGeneration.from_pretrained(config.MOONSHINE_MODEL_SIZE)
+                if self.device == 'cuda' and torch.cuda.is_available():
+                    self.model = self.model.half()
                 self.model.to(self.device)
                 print("✅ Moonshine Loaded Successfully!")
             except Exception as e:
@@ -34,11 +36,20 @@ class Ear:
 
         # 1. Convert bytes to float32
         audio_float = pcm_to_float(raw_pcm)
+        if len(audio_float) == 0:
+            return ""
 
-        # 2. Resample 48k (Mumble) -> 16k (Moonshine)
+        # 2. Trim leading and trailing silence (< 0.001 amplitude)
+        non_silent = np.where(np.abs(audio_float) > 0.001)[0]
+        if len(non_silent) > 0:
+            audio_float = audio_float[non_silent[0]:non_silent[-1] + 1]
+        else:
+            return ""
+
+        # 3. Resample 48k (Mumble) -> 16k (Moonshine)
         audio_16k = resample_audio(audio_float, 48000, 16000)
 
-        # 3. Transcribe using transformers
+        # 4. Transcribe using transformers
         try:
             inputs = self.processor(audio_16k, sampling_rate=16000, return_tensors="pt")
             

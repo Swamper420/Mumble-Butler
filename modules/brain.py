@@ -119,6 +119,7 @@ class Brain:
             "model": getattr(config, 'OLLAMA_MODEL', 'gemma4-e2b'),
             "messages": messages,
             "stream": False,
+            "keep_alive": "15m",
             "options": {
                 "num_predict": num_predict,
                 "num_ctx": getattr(config, 'LLM_CONTEXT_SIZE', 2000)
@@ -270,6 +271,7 @@ class Brain:
                     "model": getattr(config, 'OLLAMA_MODEL', 'gemma4-e2b'),
                     "messages": messages,
                     "stream": True,
+                    "keep_alive": "15m",
                     "options": {
                         "num_predict": num_predict,
                         "num_ctx": getattr(config, 'LLM_CONTEXT_SIZE', 2000)
