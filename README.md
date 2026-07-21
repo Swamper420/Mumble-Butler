@@ -25,7 +25,7 @@ pip install -r requirements.txt   # also need: ffmpeg, a running Mumble server
 cp .env.example .env              # edit with your server details + Ollama settings
 
 # 3. Ensure Ollama is running and pull your preferred model
-ollama run gemma2
+ollama run gemma4-e2b
 
 # 4. Run
 python main.py
@@ -101,7 +101,7 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 | `MUMBLE_RECONNECT_DELAY` | `5` | Reconnect delay (seconds) |
 | **LLM** | | |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama API endpoint address |
-| `OLLAMA_MODEL` | `gemma2` | Ollama model name |
+| `OLLAMA_MODEL` | `gemma4-e2b` | Ollama model name |
 | `LLM_DISABLE_THINKING` | `True` | Strip `<think>` tags |
 | `LLM_MAX_TOKENS` | `1024` | Max tokens per response |
 | `LLM_CONTEXT_SIZE` | `2000` | Context window size |

@@ -83,14 +83,17 @@ class Brain:
         return text.strip()
 
     def _format_user_prompt(self, user_prompt: str) -> str:
-        """Append /no_think suffix when thinking is disabled and using a Gemma model."""
+        """Append /no_think suffix when thinking is disabled and using a Gemma 3 model."""
         model_setting = getattr(config, 'OLLAMA_MODEL', getattr(config, 'LLM_MODEL_PATH', '')).lower()
-        if getattr(config, 'LLM_DISABLE_THINKING', False) and 'gemma' in model_setting:
+        if getattr(config, 'LLM_DISABLE_THINKING', False) and 'gemma-3' in model_setting:
             return f"{user_prompt} /no_think"
         return user_prompt
 
-    def _chat_completion(self, messages, max_tokens=120, temperature=None, stop=None):
+    def _chat_completion(self, messages, max_tokens=None, temperature=None, stop=None):
         """Send chat completion request to Ollama API or handle test mocks."""
+        if max_tokens is None:
+            max_tokens = getattr(config, 'LLM_MAX_TOKENS', 512)
+
         if hasattr(self.llm, 'create_chat_completion'):
             kwargs = {
                 'messages': messages,
@@ -108,7 +111,7 @@ class Brain:
         host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
         url = f"{host}/api/chat"
         payload = {
-            "model": getattr(config, 'OLLAMA_MODEL', 'gemma2'),
+            "model": getattr(config, 'OLLAMA_MODEL', 'gemma4-e2b'),
             "messages": messages,
             "stream": False,
             "options": {
@@ -127,8 +130,11 @@ class Brain:
         content = data.get("message", {}).get("content", "")
         return {"choices": [{"message": {"content": content}}]}
 
-    def generate_response(self, user_prompt: str, max_tokens=120) -> str:
+    def generate_response(self, user_prompt: str, max_tokens=None) -> str:
         if not self.llm: return "My brain is offline."
+
+        if max_tokens is None:
+            max_tokens = getattr(config, 'LLM_MAX_TOKENS', 512)
 
         tags = self._get_tags()
         now = datetime.now().strftime('%H:%M')
@@ -166,10 +172,13 @@ class Brain:
         except Exception as e:
             return f"Thinking error: {e}"
 
-    def generate_response_stream(self, user_prompt: str, max_tokens=120):
+    def generate_response_stream(self, user_prompt: str, max_tokens=None):
         if not self.llm:
             yield "My brain is offline."
             return
+
+        if max_tokens is None:
+            max_tokens = getattr(config, 'LLM_MAX_TOKENS', 512)
 
         tags = self._get_tags()
         now = datetime.now().strftime('%H:%M')
@@ -218,15 +227,17 @@ class Brain:
                             if in_think_block:
                                 if '</think>' in complete_response:
                                     in_think_block = False
-                                    clean = self._strip_thinking(complete_response)
-                                    complete_response = clean
+                                    after_think = complete_response.split('</think>', 1)[-1]
+                                    if after_think:
+                                        yield after_think
+                                        complete_response = after_think
                                 continue
                         yield token
             else:
                 host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
                 url = f"{host}/api/chat"
                 payload = {
-                    "model": getattr(config, 'OLLAMA_MODEL', 'gemma2'),
+                    "model": getattr(config, 'OLLAMA_MODEL', 'gemma4-e2b'),
                     "messages": messages,
                     "stream": True,
                     "options": {
@@ -241,6 +252,7 @@ class Brain:
                     response = requests.post(url, json=payload, stream=True, timeout=60)
                 response.raise_for_status()
 
+                yielded_any = False
                 for line in response.iter_lines():
                     if not line:
                         continue
@@ -262,10 +274,21 @@ class Brain:
                             if in_think_block:
                                 if '</think>' in complete_response:
                                     in_think_block = False
-                                    clean = self._strip_thinking(complete_response)
-                                    complete_response = clean
+                                    after_think = complete_response.split('</think>', 1)[-1]
+                                    if after_think:
+                                        yielded_any = True
+                                        yield after_think
+                                        complete_response = after_think
                                 continue
+                        yielded_any = True
                         yield token
+
+                # Fallback: If thinking ate all tokens or stream ended inside thinking block,
+                # yield stripped content if nothing was yielded so the bot is never silent!
+                if not yielded_any and complete_response:
+                    fallback = self._strip_thinking(complete_response)
+                    if fallback:
+                        yield fallback
 
             final = self._strip_thinking(complete_response).strip().replace('"', '')
             self._update_history(user_prompt, final)
