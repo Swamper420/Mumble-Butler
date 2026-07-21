@@ -141,7 +141,8 @@ class Brain:
 
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
-        full_system = f"{base_system}\nContext: It is {now}."
+        no_think_instruction = " Do NOT output thinking blocks, <think> tags, or internal reasoning. Respond directly with your answer." if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
+        full_system = f"{base_system}{no_think_instruction}\nContext: It is {now}."
 
         messages = [
             {"role": "system", "content": full_system}
@@ -184,7 +185,8 @@ class Brain:
 
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
-        full_system = f"{base_system}\nContext: It is {now}."
+        no_think_instruction = " Do NOT output thinking blocks, <think> tags, or internal reasoning. Respond directly with your answer." if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
+        full_system = f"{base_system}{no_think_instruction}\nContext: It is {now}."
 
         messages = [
             {"role": "system", "content": full_system}
