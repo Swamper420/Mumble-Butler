@@ -74,7 +74,11 @@ class WebSearcher:
         if max_results is None:
             max_results = self.default_max_results
 
-        clean_query = re.sub(r'^(search|google|look up|find info for|find info on)\s+', '', query, flags=re.I).strip()
+        # Strip user prefixes like "User <name> says:", wake words, and explicit search verbs
+        clean_query = re.sub(r'^User\s+.*?\s+(says|asks):\s*', '', query, flags=re.IGNORECASE).strip()
+        clean_query = re.sub(r'^(obama|opama|opal|opa)[,\s]+', '', clean_query, flags=re.IGNORECASE).strip()
+        clean_query = re.sub(r'^(search|google|look up|find info for|find info on)\s+', '', clean_query, flags=re.IGNORECASE).strip()
+
         if not clean_query:
             clean_query = query
 
@@ -86,7 +90,7 @@ class WebSearcher:
 
             return self._parse_html_results(response.text, max_results=max_results)
         except Exception as e:
-            print(f"⚠️ Web search error for query '{query}': {e}")
+            print(f"⚠️ Web search error for query '{clean_query}': {e}")
             return []
 
     def _parse_html_results(self, html: str, max_results=3) -> list:

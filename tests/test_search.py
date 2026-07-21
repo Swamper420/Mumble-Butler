@@ -43,12 +43,16 @@ class TestWebSearcher(unittest.TestCase):
         mock_post.return_value = mock_response
 
         searcher = WebSearcher()
-        results = searcher.search("weather in Helsinki")
+        results = searcher.search("User Terry says: Obama search weather in Helsinki")
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["title"], "Helsinki Weather - Today")
         self.assertEqual(results[0]["snippet"], "Clear sky with a high of 22°C.")
         self.assertEqual(results[0]["url"], "https://weather.com/helsinki")
+
+        # Verify that requests.post received clean query without 'User Terry says:' or 'Obama'
+        call_args = mock_post.call_args
+        self.assertEqual(call_args[1]["data"]["q"], "weather in Helsinki")
 
     def test_format_search_context(self):
         searcher = WebSearcher()
