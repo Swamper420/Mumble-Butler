@@ -14,6 +14,7 @@ A voice-activated AI butler for Mumble. Listens for a wake word, transcribes spe
 | 💬 **Dual Interface** | Full command set via both voice and Mumble text chat |
 | 🕒 **Hourly Reports** | Context-aware room status updates based on who's present and recent conversation |
 | ⏰ **Reminders** | Natural language spoken reminders (`remind me in 10 minutes about standup`) |
+| 🌐 **Web Search** | Live DuckDuckGo web search integration to answer questions with real-time up-to-date internet info |
 
 ## Quick Start
 
@@ -58,6 +59,7 @@ main.py → MadnessBot (bot.py)
 | `<wake> recommend <vibe>` | Curated recommendation |
 | `<wake> stop` / `skip` / `repeat <n>` | Playback control |
 | `<wake> volume <0-100>` / `mode <name>` | Volume & mode |
+| `<wake> search <query>` | Live web search query |
 | `<wake> remind me in <n> <unit> about <x>` | Spoken reminder |
 | `<wake> forget` / `status` / `ping` | Memory, status, connectivity |
 | `<wake> shut up` | Immediately stop speaking |
@@ -68,6 +70,7 @@ main.py → MadnessBot (bot.py)
 |---|---|
 | `?help` | List commands |
 | `?status` | System health & uptime |
+| `?search <query>` | Real-time web search summary |
 | `?say <text>` | Speak arbitrary text |
 | `?voice <name>` | Change TTS voice |
 | `?prompt <text>` / `?prompt reset` | Dynamic system prompt |

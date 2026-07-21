@@ -28,6 +28,8 @@ LLM_PROMPT_FORMAT = os.getenv("LLM_PROMPT_FORMAT", "gemma") # "gemma" or "chatml
 LLM_DISABLE_THINKING = os.getenv("LLM_DISABLE_THINKING", "True").lower() == "true"
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
 OLLAMA_THINK_BUFFER = int(os.getenv("OLLAMA_THINK_BUFFER", "1024"))
+WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "True").lower() == "true"
+WEB_SEARCH_MAX_RESULTS = int(os.getenv("WEB_SEARCH_MAX_RESULTS", "3"))
 
 
 # --- AI CONFIG ---
@@ -79,6 +81,7 @@ VOICE_TRIGGERS = {
     'PLAY_MUSIC': ["music"],
     'PLAY_SPECIFIC': ["play", "queue"],
     'RECOMMEND': ["recommend"],
+    'SEARCH': ["search", "google", "look up"],
     'STOP': ["stop", "silence"],
     'SKIP': ["skip", "next"],
     'PLAY_FILE': ["file"],
@@ -117,7 +120,8 @@ TEXT_TRIGGERS = {
     'SAYSAVE': "?saysave",
     'MEMORY': "?memory",
     'RECOMMEND': "?recommend",
-    'REMIND': "?remind"
+    'REMIND': "?remind",
+    'SEARCH': "?search"
 }
 
 # --- AUDIO PARAMETERS ---

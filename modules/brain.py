@@ -5,6 +5,7 @@ from datetime import datetime
 import random
 import config
 from modules.recommender import MusicRecommender
+from modules.search import WebSearcher
 
 try:
     import requests
@@ -19,6 +20,7 @@ class Brain:
         self.lock = threading.Lock()
         self.history = []
         self.recommender = MusicRecommender()
+        self.searcher = WebSearcher()
 
         # Initialize memory state from config (defaults to False if not set)
         self.memory_enabled = getattr(config, 'MEMORY_ENABLED', False)
@@ -133,7 +135,19 @@ class Brain:
         content = data.get("message", {}).get("content", "")
         return {"choices": [{"message": {"content": content}}]}
 
-    def generate_response(self, user_prompt: str, max_tokens=None, stop=None) -> str:
+    def _build_search_context(self, user_prompt: str, search_context: str = None) -> str:
+        """Helper to fetch or format web search results if needed."""
+        if search_context:
+            return search_context
+
+        if self.searcher.should_search(user_prompt):
+            print(f"🌐 Performing web search for prompt: '{user_prompt}'")
+            results = self.searcher.search(user_prompt)
+            if results:
+                return self.searcher.format_search_context(user_prompt, results)
+        return ""
+
+    def generate_response(self, user_prompt: str, max_tokens=None, stop=None, search_context=None) -> str:
         if not self.llm: return "My brain is offline."
 
         if max_tokens is None:
@@ -142,7 +156,12 @@ class Brain:
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
         no_think_instruction = " Do NOT output thinking blocks, <think> tags, or internal reasoning. Respond directly with your answer." if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
-        full_system = f"{base_system}{no_think_instruction}\nContext: It is {now}."
+
+        web_context = self._build_search_context(user_prompt, search_context)
+        if web_context:
+            full_system = f"{base_system}{no_think_instruction}\nContext: It is {now}.\n\n{web_context}"
+        else:
+            full_system = f"{base_system}{no_think_instruction}\nContext: It is {now}."
 
         messages = [
             {"role": "system", "content": full_system}
@@ -175,7 +194,7 @@ class Brain:
         except Exception as e:
             return f"Thinking error: {e}"
 
-    def generate_response_stream(self, user_prompt: str, max_tokens=None, stop=None):
+    def generate_response_stream(self, user_prompt: str, max_tokens=None, stop=None, search_context=None):
         if not self.llm:
             yield "My brain is offline."
             return
@@ -186,7 +205,12 @@ class Brain:
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
         no_think_instruction = " Do NOT output thinking blocks, <think> tags, or internal reasoning. Respond directly with your answer." if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
-        full_system = f"{base_system}{no_think_instruction}\nContext: It is {now}."
+
+        web_context = self._build_search_context(user_prompt, search_context)
+        if web_context:
+            full_system = f"{base_system}{no_think_instruction}\nContext: It is {now}.\n\n{web_context}"
+        else:
+            full_system = f"{base_system}{no_think_instruction}\nContext: It is {now}."
 
         messages = [
             {"role": "system", "content": full_system}

@@ -144,6 +144,19 @@ class TextHandler:
                 self.bot.send_chat(f"Queued: {song}")
                 self.bot.play(song)
 
+        elif cmd == config.TEXT_TRIGGERS['SEARCH']:
+            if arg:
+                self.bot.send_chat(f"Searching web for: <i>{arg}</i>...")
+                results = self.bot.brain.searcher.search(arg)
+                search_ctx = self.bot.brain.searcher.format_search_context(arg, results)
+                if results:
+                    summary_prompt = f"Summarize the following search results for '{arg}':\n\n{search_ctx}"
+                    self.bot.say_stream(summary_prompt, user=sender['name'])
+                else:
+                    self.bot.send_chat(f"No web search results found for '{arg}'.")
+            else:
+                self.bot.send_chat("<b>Usage:</b> ?search &lt;query&gt;<br/><i>Example: ?search weather in Helsinki</i>")
+
         elif cmd == "?ping":
             self.bot.send_chat("Pong!")
 
