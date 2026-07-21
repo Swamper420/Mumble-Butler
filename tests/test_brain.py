@@ -9,15 +9,10 @@ import config
 
 def _make_brain_with_mock_llm(llm_mock):
     """Return a Brain instance whose internal llm is replaced by *llm_mock*."""
-    # Stub out llama_cpp so the module loads without the native library.
-    fake_llama_cpp = types.ModuleType("llama_cpp")
-    fake_llama_cpp.Llama = MagicMock(return_value=llm_mock)
-    with patch.dict(sys.modules, {"llama_cpp": fake_llama_cpp}):
-        from modules import brain as brain_mod
-        # Patch LLM_AVAILABLE so __init__ actually creates self.llm
-        with patch.object(brain_mod, "LLM_AVAILABLE", True):
+    from modules import brain as brain_mod
+    with patch.object(brain_mod, "LLM_AVAILABLE", True):
+        with patch.object(brain_mod.Brain, "check_connection", return_value=True):
             b = brain_mod.Brain()
-            # Directly set the llm to our mock to bypass model loading
             b.llm = llm_mock
     return b
 

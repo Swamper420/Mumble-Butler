@@ -19,6 +19,10 @@ RECONNECT_DELAY = int(os.getenv("MUMBLE_RECONNECT_DELAY", "5"))
 # --- PATHS ---
 STATS_FILE = os.getenv("STATS_FILE", "user_stats.csv")
 CHIME_FILE = os.getenv("CHIME_FILE", "chime.wav")
+
+# --- OLLAMA / LLM CONFIG ---
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma2")
 LLM_MODEL_PATH = os.getenv("LLM_MODEL_PATH", "models/gemma-3-8b-it-q4_k_m.gguf")
 LLM_PROMPT_FORMAT = os.getenv("LLM_PROMPT_FORMAT", "gemma") # "gemma" or "chatml"
 LLM_DISABLE_THINKING = os.getenv("LLM_DISABLE_THINKING", "True").lower() == "true"

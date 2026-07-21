@@ -76,25 +76,30 @@ class TestEnhancedRecommender(unittest.TestCase):
         mock_verify.side_effect = lambda x: x
         from modules.brain import Brain
         with patch('modules.brain.LLM_AVAILABLE', True):
-            brain = Brain()
-            brain.llm = MagicMock()
-            brain.llm.return_value = {
-                "choices": [{
-                    "text": "[INTENT]\nSPECIFIC\n[VIBE]\nQueen Rock\n[RECOMMENDATIONS]\nQueen - Bohemian Rhapsody\nQueen - Under Pressure"
-                }]
-            }
-            brain.recommender.history = ["Queen - Bohemian Rhapsody"]
-            
-            song = brain.recommend_song("play bohemian rhapsody")
-            self.assertEqual(song, "Queen - Bohemian Rhapsody")
+            with patch('modules.brain.Brain.check_connection', return_value=True):
+                brain = Brain()
+                brain.llm = MagicMock()
+                brain.llm.return_value = {
+                    "choices": [{
+                        "message": {
+                            "content": "[INTENT]\nSPECIFIC\n[VIBE]\nQueen Rock\n[RECOMMENDATIONS]\nQueen - Bohemian Rhapsody\nQueen - Under Pressure"
+                        }
+                    }]
+                }
+                brain.recommender.history = ["Queen - Bohemian Rhapsody"]
+                
+                song = brain.recommend_song("play bohemian rhapsody")
+                self.assertEqual(song, "Queen - Bohemian Rhapsody")
 
-            brain.llm.return_value = {
-                "choices": [{
-                    "text": "[INTENT]\nGENRE_MOOD\n[VIBE]\nQueen Rock\n[RECOMMENDATIONS]\nQueen - Bohemian Rhapsody\nQueen - Under Pressure"
-                }]
-            }
-            song = brain.recommend_song("play some Queen vibe")
-            self.assertEqual(song, "Queen - Under Pressure")
+                brain.llm.return_value = {
+                    "choices": [{
+                        "message": {
+                            "content": "[INTENT]\nGENRE_MOOD\n[VIBE]\nQueen Rock\n[RECOMMENDATIONS]\nQueen - Bohemian Rhapsody\nQueen - Under Pressure"
+                        }
+                    }]
+                }
+                song = brain.recommend_song("play some Queen vibe")
+                self.assertEqual(song, "Queen - Under Pressure")
 
     def test_get_tags_dynamic(self):
         from modules.brain import Brain

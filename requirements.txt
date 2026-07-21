@@ -1,6 +1,6 @@
 pymumble_py3
 transformers>=4.48.0
-llama-cpp-python
+requests
 kokoro
 numpy
 python-dotenv

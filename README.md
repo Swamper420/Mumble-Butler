@@ -8,7 +8,7 @@ A voice-activated AI butler for Mumble. Listens for a wake word, transcribes spe
 |---|---|
 | 🎙️ **Speech-to-Text** | [Moonshine](https://github.com/UsefulSensors/moonshine) streaming model via HuggingFace Transformers |
 | 🔔 **Wake Word** | [openWakeWord](https://github.com/dscripka/openWakeWord) with real-time streaming detection + keyword fallback with fuzzy matching ([rapidfuzz](https://github.com/rapidfuzz/RapidFuzz)) |
-| 🧠 **Local LLM** | [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) with GGUF models, streaming token-by-token responses |
+| 🧠 **LLM API** | External [Ollama](https://ollama.com) API integration supporting any model with streaming responses |
 | 🗣️ **Text-to-Speech** | [Kokoro](https://github.com/hexgrad/kokoro) with 10 selectable voices, sentence-level streaming for low latency |
 | 🎵 **Music** | YouTube playback, LLM-seeded recommendations via iTunes API, history-aware deduplication — all via [botamusique](https://github.com/azlux/botamusique) |
 | 💬 **Dual Interface** | Full command set via both voice and Mumble text chat |
@@ -22,10 +22,10 @@ A voice-activated AI butler for Mumble. Listens for a wake word, transcribes spe
 pip install -r requirements.txt   # also need: ffmpeg, a running Mumble server
 
 # 2. Configure
-cp .env.example .env              # edit with your server details + model path
+cp .env.example .env              # edit with your server details + Ollama settings
 
-# 3. Place a GGUF model
-#    e.g. models/gemma-3-8b-it-q4_k_m.gguf
+# 3. Ensure Ollama is running and pull your preferred model
+ollama run gemma2
 
 # 4. Run
 python main.py
@@ -100,12 +100,11 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 | `MUMBLE_IGNORED_USERS` | `YoMusicBot` | Comma-separated ignore list |
 | `MUMBLE_RECONNECT_DELAY` | `5` | Reconnect delay (seconds) |
 | **LLM** | | |
-| `LLM_MODEL_PATH` | `models/gemma-3-8b-it-q4_k_m.gguf` | GGUF model path |
-| `LLM_PROMPT_FORMAT` | `gemma` | `gemma` or `chatml` |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama API endpoint address |
+| `OLLAMA_MODEL` | `gemma2` | Ollama model name |
 | `LLM_DISABLE_THINKING` | `True` | Strip `<think>` tags |
 | `LLM_MAX_TOKENS` | `1024` | Max tokens per response |
 | `LLM_CONTEXT_SIZE` | `2000` | Context window size |
-| `LLM_GPU_LAYERS` | `-1` | GPU layers (`-1` = all) |
 | **Speech Recognition** | | |
 | `MOONSHINE_MODEL_SIZE` | `UsefulSensors/moonshine-streaming-medium` | Moonshine model |
 | `MOONSHINE_DEVICE` | `cuda` | `cuda` or `cpu` |

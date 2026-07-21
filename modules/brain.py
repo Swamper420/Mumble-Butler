@@ -1,3 +1,4 @@
+import json
 import re
 import threading
 from datetime import datetime
@@ -6,10 +7,11 @@ import config
 from modules.recommender import MusicRecommender
 
 try:
-    from llama_cpp import Llama
+    import requests
     LLM_AVAILABLE = True
 except ImportError:
     LLM_AVAILABLE = False
+
 
 class Brain:
     def __init__(self):
@@ -23,28 +25,34 @@ class Brain:
         self.dynamic_prompt = None
 
         if LLM_AVAILABLE:
-            try:
-                print("🧠 Loading LLM...")
-                self.llm = Llama(
-                    model_path=config.LLM_MODEL_PATH,
-                    n_ctx=config.LLM_CONTEXT_SIZE,
-                    n_gpu_layers=config.LLM_GPU_LAYERS,
-                    verbose=False
-                )
-            except Exception as e:
-                print(f"❌ LLM Error: {e}")
+            self.check_connection()
+
+    def check_connection(self):
+        """Check if external Ollama API is reachable."""
+        try:
+            host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
+            url = f"{host}/api/tags"
+            res = requests.get(url, timeout=3)
+            if res.status_code == 200:
+                print("🧠 Connected to Ollama API.")
+                self.llm = True
+                return True
+        except Exception as e:
+            print(f"❌ Ollama API Error: {e}")
+        self.llm = None
+        return False
 
     def toggle_memory(self):
         with self.lock:
             self.memory_enabled = not self.memory_enabled
             if not self.memory_enabled:
-                self.history = [] # Optional: clear history when disabling?
+                self.history = []
             return self.memory_enabled
 
     def _get_tags(self):
         fmt = getattr(config, 'LLM_PROMPT_FORMAT', 'chatml').lower()
-        # Auto-detect ChatML format for Qwen models if default 'gemma' is selected
-        if fmt == 'gemma' and 'qwen' in getattr(config, 'LLM_MODEL_PATH', '').lower():
+        model_setting = getattr(config, 'OLLAMA_MODEL', getattr(config, 'LLM_MODEL_PATH', '')).lower()
+        if fmt == 'gemma' and 'qwen' in model_setting:
             fmt = 'chatml'
 
         if fmt == 'gemma':
@@ -68,18 +76,56 @@ class Brain:
                 'stop': ['<|im_end|>', '<|im_start|>']
             }
 
-
     def _strip_thinking(self, text: str) -> str:
         """Remove <think>...</think> blocks from LLM output."""
-        if config.LLM_DISABLE_THINKING:
+        if getattr(config, 'LLM_DISABLE_THINKING', False):
             text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
         return text.strip()
 
     def _format_user_prompt(self, user_prompt: str) -> str:
         """Append /no_think suffix when thinking is disabled and using a Gemma model."""
-        if config.LLM_DISABLE_THINKING and 'gemma' in getattr(config, 'LLM_MODEL_PATH', '').lower():
+        model_setting = getattr(config, 'OLLAMA_MODEL', getattr(config, 'LLM_MODEL_PATH', '')).lower()
+        if getattr(config, 'LLM_DISABLE_THINKING', False) and 'gemma' in model_setting:
             return f"{user_prompt} /no_think"
         return user_prompt
+
+    def _chat_completion(self, messages, max_tokens=120, temperature=None, stop=None):
+        """Send chat completion request to Ollama API or handle test mocks."""
+        if hasattr(self.llm, 'create_chat_completion'):
+            kwargs = {
+                'messages': messages,
+                'max_tokens': max_tokens
+            }
+            if stop is not None:
+                kwargs['stop'] = stop
+            if temperature is not None:
+                kwargs['temperature'] = temperature
+            return self.llm.create_chat_completion(**kwargs)
+
+        if callable(self.llm):
+            return self.llm(messages=messages, max_tokens=max_tokens)
+
+        host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
+        url = f"{host}/api/chat"
+        payload = {
+            "model": getattr(config, 'OLLAMA_MODEL', 'gemma2'),
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "num_predict": max_tokens,
+                "num_ctx": getattr(config, 'LLM_CONTEXT_SIZE', 2000)
+            }
+        }
+        if temperature is not None:
+            payload["options"]["temperature"] = temperature
+        if stop:
+            payload["options"]["stop"] = stop
+
+        response = requests.post(url, json=payload, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        content = data.get("message", {}).get("content", "")
+        return {"choices": [{"message": {"content": content}}]}
 
     def generate_response(self, user_prompt: str, max_tokens=120) -> str:
         if not self.llm: return "My brain is offline."
@@ -102,7 +148,7 @@ class Brain:
 
         try:
             with self.lock:
-                output = self.llm.create_chat_completion(
+                output = self._chat_completion(
                     messages=messages,
                     max_tokens=max_tokens,
                     stop=tags['stop']
@@ -144,39 +190,82 @@ class Brain:
         try:
             complete_response = ""
             in_think_block = False
-            with self.lock:
-                output = self.llm.create_chat_completion(
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    stop=tags['stop'],
-                    stream=True
-                )
-            
-            for chunk in output:
-                choices = chunk.get('choices', [])
-                if not choices:
-                    continue
-                delta = choices[0].get('delta', {})
-                token = delta.get('content', '')
-                if not token:
-                    continue
-                for t in ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>"]:
-                    token = token.replace(t, "")
-                token = token.replace("Obama:", "")
-                if token:
-                    complete_response += token
-                    # Suppress <think> blocks in real-time during streaming
-                    if config.LLM_DISABLE_THINKING:
-                        if '<think>' in complete_response and not in_think_block:
-                            in_think_block = True
-                        if in_think_block:
-                            if '</think>' in complete_response:
-                                in_think_block = False
-                                # Strip all think blocks and yield the clean remainder
-                                clean = self._strip_thinking(complete_response)
-                                complete_response = clean
-                            continue
-                    yield token
+
+            if hasattr(self.llm, 'create_chat_completion'):
+                with self.lock:
+                    output = self.llm.create_chat_completion(
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        stop=tags['stop'],
+                        stream=True
+                    )
+                for chunk in output:
+                    choices = chunk.get('choices', [])
+                    if not choices:
+                        continue
+                    delta = choices[0].get('delta', {})
+                    token = delta.get('content', '')
+                    if not token:
+                        continue
+                    for t in ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>"]:
+                        token = token.replace(t, "")
+                    token = token.replace("Obama:", "")
+                    if token:
+                        complete_response += token
+                        if getattr(config, 'LLM_DISABLE_THINKING', False):
+                            if '<think>' in complete_response and not in_think_block:
+                                in_think_block = True
+                            if in_think_block:
+                                if '</think>' in complete_response:
+                                    in_think_block = False
+                                    clean = self._strip_thinking(complete_response)
+                                    complete_response = clean
+                                continue
+                        yield token
+            else:
+                host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
+                url = f"{host}/api/chat"
+                payload = {
+                    "model": getattr(config, 'OLLAMA_MODEL', 'gemma2'),
+                    "messages": messages,
+                    "stream": True,
+                    "options": {
+                        "num_predict": max_tokens,
+                        "num_ctx": getattr(config, 'LLM_CONTEXT_SIZE', 2000)
+                    }
+                }
+                if tags.get('stop'):
+                    payload["options"]["stop"] = tags['stop']
+
+                with self.lock:
+                    response = requests.post(url, json=payload, stream=True, timeout=60)
+                response.raise_for_status()
+
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line.decode('utf-8'))
+                    except Exception:
+                        continue
+                    token = chunk.get('message', {}).get('content', '')
+                    if not token:
+                        continue
+                    for t in ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>"]:
+                        token = token.replace(t, "")
+                    token = token.replace("Obama:", "")
+                    if token:
+                        complete_response += token
+                        if getattr(config, 'LLM_DISABLE_THINKING', False):
+                            if '<think>' in complete_response and not in_think_block:
+                                in_think_block = True
+                            if in_think_block:
+                                if '</think>' in complete_response:
+                                    in_think_block = False
+                                    clean = self._strip_thinking(complete_response)
+                                    complete_response = clean
+                                continue
+                        yield token
 
             final = self._strip_thinking(complete_response).strip().replace('"', '')
             self._update_history(user_prompt, final)
@@ -194,9 +283,7 @@ class Brain:
         finally:
             loop.call_soon_threadsafe(queue.put_nowait, None)
 
-
     def _update_history(self, user, ai):
-        # Do not save to history if memory is disabled
         if not self.memory_enabled:
             return
 
@@ -214,15 +301,12 @@ class Brain:
         """Removes the last interaction (user + assistant) from memory."""
         with self.lock:
             if len(self.history) >= 2:
-                # Remove last two messages (user and assistant)
                 self.history = self.history[:-2]
                 return True
             elif len(self.history) == 1:
                 self.history = []
                 return True
             return False
-
-
 
     def parse_recommendation_output(self, llm_output: str):
         lines = llm_output.strip().split('\n')
@@ -266,7 +350,6 @@ class Brain:
         3. iTunes verification & standardization.
         4. History filtering.
         """
-        # If LLM is not available, fall back to pure keyword iTunes search
         if not self.llm:
             print("🧠 LLM is offline. Falling back to direct iTunes keyword search.")
             fallback_seeds = [description] if description and description != "random music" else []
@@ -275,15 +358,12 @@ class Brain:
                 random.shuffle(fallback_seeds)
             return self.recommender.get_recommendation(fallback_seeds)
 
-        # 1. Prepare Context
         context_str = ""
         if chat_context:
-            # Take last 10 transcripts for flavor
             recent = chat_context[-10:]
             context_str = "Recent chat vibe: " + " | ".join([f"{t['user']}: {t['text']}" for t in recent])
 
-        no_think = " /no_think" if config.LLM_DISABLE_THINKING else ""
-        
+        no_think = " /no_think" if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
         tags = self._get_tags()
         
         system_content = (
@@ -325,7 +405,7 @@ class Brain:
 
         try:
             with self.lock:
-                output = self.llm.create_chat_completion(
+                output = self._chat_completion(
                     messages=messages,
                     max_tokens=250,
                     stop=tags['stop'],
@@ -342,28 +422,21 @@ class Brain:
                 print("⚠️ LLM didn't return formatted recommendations. Trying fallback keyword search.")
                 return self.recommender.get_recommendation([description])
 
-            # Try to find a track from the recommendations
             for i, track in enumerate(recommendations):
-                # If intent is SPECIFIC and it's the very first recommendation,
-                # we can bypass the history check, because the user explicitly asked for it!
                 is_explicit_request = (intent == "SPECIFIC" and i == 0)
                 
                 if not is_explicit_request and self.recommender.is_in_history(track):
                     continue
                 
-                # Verify and clean the song name via iTunes Search API (optional but good)
                 verified = self.recommender.verify_track_on_itunes(track)
                 final_track = verified if verified else track
                 
-                # Check again if the verified name is in history
                 if not is_explicit_request and self.recommender.is_in_history(final_track):
                     continue
                 
-                # Save to history and return
                 self.recommender.add_to_history(final_track)
                 return final_track
 
-            # If all were in history or verification filtered everything, return the first one as fallback
             fallback_track = recommendations[0]
             verified = self.recommender.verify_track_on_itunes(fallback_track)
             final_track = verified if verified else fallback_track
@@ -374,15 +447,10 @@ class Brain:
             print(f"Recommendation error: {e}. Trying fallback keyword search.")
             return self.recommender.get_recommendation([description])
 
-
-
-    # --- NEW METHOD ---
     def generate_hourly_report(self, active_users, recent_transcripts):
         if not self.llm: return None
 
         now = datetime.now().strftime('%H:%M')
-
-        # Format recent transcripts for context
         transcript_text = ""
         if recent_transcripts:
             transcript_text = "\n".join([f"- {t['user']}: {t['text']}" for t in recent_transcripts])
@@ -390,7 +458,7 @@ class Brain:
             transcript_text = "No one has spoken recently."
 
         users_text = ", ".join(active_users) if active_users else "No one else is here."
-        no_think = " /no_think" if config.LLM_DISABLE_THINKING else ""
+        no_think = " /no_think" if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
 
         tags = self._get_tags()
         system_content = (
@@ -408,7 +476,7 @@ class Brain:
 
         try:
             with self.lock:
-                output = self.llm.create_chat_completion(
+                output = self._chat_completion(
                     messages=messages,
                     max_tokens=350,
                     stop=tags['stop']
@@ -417,5 +485,3 @@ class Brain:
         except Exception as e:
             print(f"Report generation error: {e}")
             return f"It is {now}. I am unable to assess the situation due to a processing error."
-
-
