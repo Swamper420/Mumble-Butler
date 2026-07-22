@@ -73,6 +73,7 @@ CHATTERBOX_TEMPERATURE = float(os.getenv("CHATTERBOX_TEMPERATURE", "0.8"))
 
 # --- FAST PRECACHED AUDIO RESPONSES (EXPERIMENTAL) ---
 FAST_AUDIO_RESPONSES_ENABLED = os.getenv("FAST_AUDIO_RESPONSES_ENABLED", "False").lower() == "true"
+FAST_AUDIO_CACHE_DIR = os.getenv("FAST_AUDIO_CACHE_DIR", "data/precached_audio")
 FAST_WAKEWORD_RESPONSES = [
     p.strip() for p in os.getenv("FAST_WAKEWORD_RESPONSES", "Yes?, [chuckle], Listening..., Mm?, Sir?, Yo").split(",") if p.strip()
 ]

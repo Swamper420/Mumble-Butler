@@ -107,10 +107,13 @@ class VoiceHandler:
 
         # 2. Volume
         if self._has_trigger(content, config.VOICE_TRIGGERS['VOLUME']):
-            self.bot.play_action_confirmation("VOLUME")
             m = re.search(r"(\d+)", content)
             if m:
-                self.bot.set_volume(int(m.group(1)))
+                vol = max(0, min(100, int(m.group(1))))
+                self.bot.play_action_confirmation("VOLUME", level=vol)
+                self.bot.set_volume(vol)
+            else:
+                self.bot.play_action_confirmation("VOLUME")
             return True
 
         # 3. Mode

@@ -54,8 +54,9 @@ class MadnessBot:
         self.voice_handler = VoiceHandler(self)
 
         # Precache fast audio responses if enabled
-        self.precached_wakeword_pcms = []
+        self.precached_wakeword_pcms = {}
         self.precached_action_pcms = {}
+        self.precached_volume_pcms = {}
         self._precache_fast_audio_responses()
 
         # State
@@ -115,55 +116,154 @@ class MadnessBot:
             except Exception as e:
                 self.logger.error(f"⚠️ Chime load error: {e}")
 
+    def _get_available_voices(self):
+        """Returns a list of available voice IDs."""
+        voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
+        voices = set()
+        default_voice = getattr(config, "CHATTERBOX_DEFAULT_VOICE", "michael")
+        voices.add(default_voice)
+        current_voice = getattr(getattr(self, "voice", None), "current_voice_id", None)
+        if current_voice:
+            voices.add(current_voice)
+
+        if os.path.exists(voice_dir):
+            for f in os.listdir(voice_dir):
+                if f.endswith(".wav"):
+                    voice_id = os.path.splitext(f)[0]
+                    voices.add(voice_id)
+
+        return sorted(list(voices))
+
     def _precache_fast_audio_responses(self):
-        """Generates precached fast audio responses on bot boot up if enabled."""
-        self.precached_wakeword_pcms = []
+        """Generates or loads precached fast audio responses (wakewords, action confirmations, volume numbers) for all available voices."""
+        import hashlib
+        self.precached_wakeword_pcms = {}
         self.precached_action_pcms = {}
+        self.precached_volume_pcms = {}
 
         if not getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False):
             return
 
-        self.logger.info("⚡ Generating precached fast audio responses on boot-up...")
+        cache_dir = getattr(config, "FAST_AUDIO_CACHE_DIR", "data/precached_audio")
+        available_voices = self._get_available_voices()
+        self.logger.info(f"⚡ Pre-caching fast audio responses for {len(available_voices)} voice(s) (disk cache: {cache_dir})...")
 
-        # 1. Pre-cache wakeword responses
         wakeword_phrases = getattr(config, "FAST_WAKEWORD_RESPONSES", [])
-        for phrase in wakeword_phrases:
-            try:
-                pcm = self.voice.generate_pcm(phrase)
-                if pcm:
-                    self.precached_wakeword_pcms.append(pcm)
-                    self.logger.info(f"  └─ Wakeword response '{phrase}': {len(pcm)} bytes")
-            except Exception as e:
-                self.logger.warning(f"Failed to precache wakeword response '{phrase}': {e}")
-
-        # 2. Pre-cache action confirmations
         action_map = getattr(config, "FAST_ACTION_CONFIRMATIONS", {})
-        for category, phrase in action_map.items():
-            try:
-                pcm = self.voice.generate_pcm(phrase)
-                if pcm:
-                    self.precached_action_pcms[category] = pcm
-                    self.logger.info(f"  └─ Action confirmation '{category}' ('{phrase}'): {len(pcm)} bytes")
-            except Exception as e:
-                self.logger.warning(f"Failed to precache action confirmation for '{category}': {e}")
 
+        for voice_id in available_voices:
+            v_wake_dir = os.path.join(cache_dir, voice_id, "wakewords")
+            v_action_dir = os.path.join(cache_dir, voice_id, "actions")
+            v_vol_dir = os.path.join(cache_dir, voice_id, "volume")
+            os.makedirs(v_wake_dir, exist_ok=True)
+            os.makedirs(v_action_dir, exist_ok=True)
+            os.makedirs(v_vol_dir, exist_ok=True)
+
+            self.precached_wakeword_pcms[voice_id] = []
+            self.precached_action_pcms[voice_id] = {}
+            self.precached_volume_pcms[voice_id] = {}
+
+            # 1. Wakewords
+            for phrase in wakeword_phrases:
+                phrase_hash = hashlib.md5(phrase.encode("utf-8")).hexdigest()[:12]
+                file_path = os.path.join(v_wake_dir, f"{phrase_hash}.pcm")
+                pcm = None
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                    try:
+                        with open(file_path, "rb") as f:
+                            pcm = f.read()
+                    except Exception as e:
+                        self.logger.warning(f"Error reading cached PCM '{file_path}': {e}")
+                
+                if not pcm:
+                    try:
+                        pcm = self.voice.generate_pcm(phrase, voice_id=voice_id)
+                        if pcm:
+                            with open(file_path, "wb") as f:
+                                f.write(pcm)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to generate wakeword response '{phrase}' for voice '{voice_id}': {e}")
+
+                if pcm:
+                    self.precached_wakeword_pcms[voice_id].append(pcm)
+
+            # 2. Action Confirmations
+            for category, phrase in action_map.items():
+                file_path = os.path.join(v_action_dir, f"{category}.pcm")
+                pcm = None
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                    try:
+                        with open(file_path, "rb") as f:
+                            pcm = f.read()
+                    except Exception as e:
+                        self.logger.warning(f"Error reading cached action PCM '{file_path}': {e}")
+                
+                if not pcm:
+                    try:
+                        pcm = self.voice.generate_pcm(phrase, voice_id=voice_id)
+                        if pcm:
+                            with open(file_path, "wb") as f:
+                                f.write(pcm)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to generate action confirmation '{category}' for voice '{voice_id}': {e}")
+
+                if pcm:
+                    self.precached_action_pcms[voice_id][category] = pcm
+
+            # 3. Volume Numbers (0..100)
+            for level in range(0, 101):
+                phrase = f"Volume {level}"
+                file_path = os.path.join(v_vol_dir, f"{level}.pcm")
+                pcm = None
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                    try:
+                        with open(file_path, "rb") as f:
+                            pcm = f.read()
+                    except Exception as e:
+                        self.logger.warning(f"Error reading cached volume PCM '{file_path}': {e}")
+
+                if not pcm:
+                    try:
+                        pcm = self.voice.generate_pcm(phrase, voice_id=voice_id)
+                        if pcm:
+                            with open(file_path, "wb") as f:
+                                f.write(pcm)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to generate volume PCM for '{level}' with voice '{voice_id}': {e}")
+
+                if pcm:
+                    self.precached_volume_pcms[voice_id][level] = pcm
+
+        w_count = sum(len(v) for v in self.precached_wakeword_pcms.values())
+        a_count = sum(len(v) for v in self.precached_action_pcms.values())
+        v_count = sum(len(v) for v in self.precached_volume_pcms.values())
         self.logger.info(
-            f"✅ Fast audio responses precached: {len(self.precached_wakeword_pcms)} wake responses, "
-            f"{len(self.precached_action_pcms)} action confirmations."
+            f"✅ Fast audio responses precached ({len(available_voices)} voice(s)): "
+            f"{w_count} wake responses, {a_count} action confirmations, {v_count} volume responses."
         )
 
     def play_ack_sound(self):
         """
         Plays an acknowledgment sound. If fast audio responses are enabled and available,
-        plays a randomly chosen fast wakeword response. Otherwise falls back to chime_pcm.
+        plays a randomly chosen fast wakeword response for the active voice. Otherwise falls back to chime_pcm.
         """
         if not (self.mumble and self.mumble.sound_output):
             return
 
         sound_to_play = None
-        if getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False) and self.precached_wakeword_pcms:
-            sound_to_play = random.choice(self.precached_wakeword_pcms)
-        elif self.chime_pcm:
+        if getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False):
+            current_voice = getattr(self.voice, "current_voice_id", config.CHATTERBOX_DEFAULT_VOICE)
+            if isinstance(self.precached_wakeword_pcms, dict):
+                voice_wakewords = self.precached_wakeword_pcms.get(current_voice, [])
+                if not voice_wakewords and self.precached_wakeword_pcms:
+                    first_key = next(iter(self.precached_wakeword_pcms))
+                    voice_wakewords = self.precached_wakeword_pcms[first_key]
+                if isinstance(voice_wakewords, list) and voice_wakewords:
+                    sound_to_play = random.choice(voice_wakewords)
+            elif isinstance(self.precached_wakeword_pcms, list) and self.precached_wakeword_pcms:
+                sound_to_play = random.choice(self.precached_wakeword_pcms)
+
+        if not sound_to_play and self.chime_pcm:
             sound_to_play = self.chime_pcm
 
         if sound_to_play:
@@ -172,15 +272,41 @@ class MadnessBot:
             except Exception as e:
                 self.logger.error(f"Error playing ack sound: {e}")
 
-    def play_action_confirmation(self, category):
+    def play_action_confirmation(self, category, level=None):
         """
-        Plays a precached action confirmation sound for a specific category (e.g. MUSIC, SEARCH, THINK).
+        Plays a precached action confirmation sound for a specific category (e.g. MUSIC, SEARCH, THINK, VOLUME).
+        If category is VOLUME and level is provided, plays precached audio for that specific volume level if available.
         """
         if not (self.mumble and self.mumble.sound_output):
             return
 
-        if getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False) and category in self.precached_action_pcms:
-            sound_to_play = self.precached_action_pcms[category]
+        if not getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False):
+            return
+
+        current_voice = getattr(self.voice, "current_voice_id", config.CHATTERBOX_DEFAULT_VOICE)
+        sound_to_play = None
+
+        if category == "VOLUME" and level is not None:
+            if isinstance(self.precached_volume_pcms, dict):
+                voice_volumes = self.precached_volume_pcms.get(current_voice)
+                if voice_volumes is None and self.precached_volume_pcms:
+                    first_key = next(iter(self.precached_volume_pcms))
+                    voice_volumes = self.precached_volume_pcms[first_key]
+                if isinstance(voice_volumes, dict):
+                    sound_to_play = voice_volumes.get(level)
+
+        if not sound_to_play:
+            if isinstance(self.precached_action_pcms, dict):
+                if current_voice in self.precached_action_pcms and isinstance(self.precached_action_pcms[current_voice], dict):
+                    sound_to_play = self.precached_action_pcms[current_voice].get(category)
+                elif category in self.precached_action_pcms:
+                    sound_to_play = self.precached_action_pcms.get(category)
+                else:
+                    first_val = next(iter(self.precached_action_pcms.values()), None)
+                    if isinstance(first_val, dict):
+                        sound_to_play = first_val.get(category)
+
+        if sound_to_play:
             try:
                 self.mumble.sound_output.add_sound(sound_to_play)
             except Exception as e:
