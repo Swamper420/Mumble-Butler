@@ -51,6 +51,16 @@ class VoiceHandler:
 
         return None
 
+    def _has_trigger(self, content, triggers):
+        """Returns True if any trigger in triggers matches content as a whole word or phrase."""
+        if not triggers:
+            return False
+        for t in triggers:
+            pattern = r"\b" + re.escape(t.lower()) + r"\b"
+            if re.search(pattern, content):
+                return True
+        return False
+
     def handle(self, user, text):
         """
         Returns True if a command was executed, False otherwise.
@@ -64,7 +74,7 @@ class VoiceHandler:
 
         # 2. Check for shut-up keyword before anything else
         shutup_keywords = getattr(config, 'SHUTUP_KEYWORDS', [])
-        if any(kw in content for kw in shutup_keywords):
+        if self._has_trigger(content, shutup_keywords):
             self.bot.stop_speaking()
             return True
 
@@ -76,7 +86,7 @@ class VoiceHandler:
 
         if not handled:
             # Check if search keyword is present
-            if any(w in content for w in config.VOICE_TRIGGERS.get('SEARCH', [])):
+            if self._has_trigger(content, config.VOICE_TRIGGERS.get('SEARCH', [])):
                 self.bot.play_action_confirmation("SEARCH")
             else:
                 self.bot.play_action_confirmation("THINK")
@@ -88,14 +98,15 @@ class VoiceHandler:
     def _match_command(self, user, content):
         """Matches content against config triggers."""
 
-        if any(w in content for w in config.VOICE_TRIGGERS['FORGET']):
+        # 1. Forget
+        if self._has_trigger(content, config.VOICE_TRIGGERS['FORGET']):
             self.bot.play_action_confirmation("MEMORY")
             self.bot.brain.reset_memory()
             self.bot.say_async("Memory wiped.", user=user)
             return True
 
         # 2. Volume
-        if any(w in content for w in config.VOICE_TRIGGERS['VOLUME']):
+        if self._has_trigger(content, config.VOICE_TRIGGERS['VOLUME']):
             self.bot.play_action_confirmation("VOLUME")
             m = re.search(r"(\d+)", content)
             if m:
@@ -103,11 +114,11 @@ class VoiceHandler:
             return True
 
         # 3. Mode
-        if any(w in content for w in config.VOICE_TRIGGERS['MODE']):
+        if self._has_trigger(content, config.VOICE_TRIGGERS['MODE']):
             self.bot.play_action_confirmation("MODE")
             modes = ["one-shot", "one shot", "oneshot", "autoplay", "repeat", "random"]
             for m in modes:
-                if m in content:
+                if re.search(r"\b" + re.escape(m) + r"\b", content):
                     target = "one-shot" if m in ["oneshot", "one shot"] else m
                     self.bot.set_mode(target)
                     return True
@@ -115,11 +126,11 @@ class VoiceHandler:
             return True
 
         # 4. Recommend
-        if any(w in content for w in config.VOICE_TRIGGERS['RECOMMEND']):
+        if self._has_trigger(content, config.VOICE_TRIGGERS['RECOMMEND']):
             self.bot.play_action_confirmation("MUSIC")
             desc = content
             for t in config.VOICE_TRIGGERS['RECOMMEND']:
-                desc = desc.replace(t, "")
+                desc = re.sub(r"\b" + re.escape(t) + r"\b", "", desc, flags=re.IGNORECASE)
             song, vibe = self.bot.brain.recommend_song(
                 desc.strip() or "random music",
                 chat_context=self.bot.recent_transcripts,
@@ -132,16 +143,22 @@ class VoiceHandler:
             return True
 
         # 5. Play / Queue (Specific)
-        if any(w in content for w in config.VOICE_TRIGGERS['PLAY_SPECIFIC']):
-            self.bot.play_action_confirmation("MUSIC")
-            triggers = "|".join(config.VOICE_TRIGGERS['PLAY_SPECIFIC'])
-            q = re.search(rf"(?:{triggers})\s+(.*)", content)
+        if self._has_trigger(content, config.VOICE_TRIGGERS['PLAY_SPECIFIC']):
+            triggers = "|".join(re.escape(w) for w in config.VOICE_TRIGGERS['PLAY_SPECIFIC'])
+            q = re.search(rf"\b(?:{triggers})\b\s+(.+)", content)
             if q:
-                self.bot.play(q.group(1))
-            return True
+                query = q.group(1).strip()
+                if query:
+                    self.bot.play_action_confirmation("MUSIC")
+                    self.bot.play(query)
+                    return True
+            elif content.strip() in config.VOICE_TRIGGERS['PLAY_SPECIFIC']:
+                self.bot.play_action_confirmation("MUSIC")
+                self.bot.resume_music()
+                return True
 
         # 6. Play (Generic Music / "music")
-        if any(w in content for w in config.VOICE_TRIGGERS['PLAY_MUSIC']):
+        if self._has_trigger(content, config.VOICE_TRIGGERS['PLAY_MUSIC']):
             self.bot.play_action_confirmation("MUSIC")
             rec, vibe = self.bot.brain.recommend_song(
                 "random music",
@@ -155,34 +172,36 @@ class VoiceHandler:
             return True
 
         # 7. Resume (if paused)
-        if any(w in content for w in config.VOICE_TRIGGERS.get('RESUME', [])):
+        if self._has_trigger(content, config.VOICE_TRIGGERS.get('RESUME', [])):
             self.bot.play_action_confirmation("RESUME")
             self.bot.resume_music()
             return True
 
         # 8. Stop (full halt)
-        if any(w in content for w in config.VOICE_TRIGGERS['STOP']):
+        if self._has_trigger(content, config.VOICE_TRIGGERS['STOP']):
             self.bot.play_action_confirmation("STOP")
             self.bot.stop_music()
             return True
 
         # 9. Skip / Next
-        if any(w in content for w in config.VOICE_TRIGGERS['SKIP']):
+        if self._has_trigger(content, config.VOICE_TRIGGERS['SKIP']):
             self.bot.play_action_confirmation("SKIP")
             self.bot.skip()
             return True
 
         # 10. File
-        if any(w in content for w in config.VOICE_TRIGGERS['PLAY_FILE']):
-            self.bot.play_action_confirmation("FILE")
-            triggers = "|".join(config.VOICE_TRIGGERS['PLAY_FILE'])
-            q = re.search(rf"(?:{triggers})\s+(.*)", content)
+        if self._has_trigger(content, config.VOICE_TRIGGERS['PLAY_FILE']):
+            triggers = "|".join(re.escape(w) for w in config.VOICE_TRIGGERS['PLAY_FILE'])
+            q = re.search(rf"\b(?:{triggers})\b\s+(.+)", content)
             if q:
-                self.bot.play_file(q.group(1))
-            return True
+                file_path = q.group(1).strip()
+                if file_path:
+                    self.bot.play_action_confirmation("FILE")
+                    self.bot.play_file(file_path)
+                    return True
 
         # 11. Repeat
-        if any(w in content for w in config.VOICE_TRIGGERS['REPEAT']):
+        if self._has_trigger(content, config.VOICE_TRIGGERS['REPEAT']):
             self.bot.play_action_confirmation("REPEAT")
             m = re.search(r"(\d+)", content)
             count = int(m.group(1)) if m else 1
@@ -190,7 +209,7 @@ class VoiceHandler:
             return True
 
         # 12. Remind
-        if any(w in content for w in config.VOICE_TRIGGERS.get('REMIND', [])):
+        if self._has_trigger(content, config.VOICE_TRIGGERS.get('REMIND', [])):
             self.bot.play_action_confirmation("REMIND")
             reminder = self._parse_reminder(content)
             if reminder:
@@ -202,7 +221,7 @@ class VoiceHandler:
             return True
 
         # 13. Status
-        if any(w in content for w in config.VOICE_TRIGGERS.get('STATUS', [])):
+        if self._has_trigger(content, config.VOICE_TRIGGERS.get('STATUS', [])):
             self.bot.play_action_confirmation("STATUS")
             status = self.bot.get_status()
             summary = f"I am connected with an uptime of {status['Uptime']}. The LLM is {status['LLM']}. Listening is {status['Listening']}."
@@ -210,7 +229,7 @@ class VoiceHandler:
             return True
 
         # 14. Ping
-        if any(w in content for w in config.VOICE_TRIGGERS.get('PING', [])):
+        if self._has_trigger(content, config.VOICE_TRIGGERS.get('PING', [])):
             self.bot.play_action_confirmation("PING")
             self.bot.say_async("Pong! I am here.", user=user)
             return True
