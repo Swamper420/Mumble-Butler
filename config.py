@@ -82,6 +82,15 @@ FAST_ACTION_CONFIRMATIONS = {
     "THINK": os.getenv("FAST_ACTION_THINK", "Let me see..."),
     "MEMORY": os.getenv("FAST_ACTION_MEMORY", "Wiping memory..."),
     "STOP": os.getenv("FAST_ACTION_STOP", "Stopping..."),
+    "VOLUME": os.getenv("FAST_ACTION_VOLUME", "Adjusting volume..."),
+    "MODE": os.getenv("FAST_ACTION_MODE", "Changing mode..."),
+    "SKIP": os.getenv("FAST_ACTION_SKIP", "Skipping..."),
+    "RESUME": os.getenv("FAST_ACTION_RESUME", "Resuming..."),
+    "FILE": os.getenv("FAST_ACTION_FILE", "Playing file..."),
+    "REPEAT": os.getenv("FAST_ACTION_REPEAT", "Setting repeat..."),
+    "REMIND": os.getenv("FAST_ACTION_REMIND", "Setting reminder..."),
+    "STATUS": os.getenv("FAST_ACTION_STATUS", "Checking status..."),
+    "PING": os.getenv("FAST_ACTION_PING", "Checking in..."),
 }
 
 # --- VOICE COMMAND TRIGGERS ---

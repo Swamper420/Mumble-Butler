@@ -96,6 +96,7 @@ class VoiceHandler:
 
         # 2. Volume
         if any(w in content for w in config.VOICE_TRIGGERS['VOLUME']):
+            self.bot.play_action_confirmation("VOLUME")
             m = re.search(r"(\d+)", content)
             if m:
                 self.bot.set_volume(int(m.group(1)))
@@ -103,6 +104,7 @@ class VoiceHandler:
 
         # 3. Mode
         if any(w in content for w in config.VOICE_TRIGGERS['MODE']):
+            self.bot.play_action_confirmation("MODE")
             modes = ["one-shot", "one shot", "oneshot", "autoplay", "repeat", "random"]
             for m in modes:
                 if m in content:
@@ -154,6 +156,7 @@ class VoiceHandler:
 
         # 7. Resume (if paused)
         if any(w in content for w in config.VOICE_TRIGGERS.get('RESUME', [])):
+            self.bot.play_action_confirmation("RESUME")
             self.bot.resume_music()
             return True
 
@@ -165,11 +168,13 @@ class VoiceHandler:
 
         # 9. Skip / Next
         if any(w in content for w in config.VOICE_TRIGGERS['SKIP']):
+            self.bot.play_action_confirmation("SKIP")
             self.bot.skip()
             return True
 
         # 10. File
         if any(w in content for w in config.VOICE_TRIGGERS['PLAY_FILE']):
+            self.bot.play_action_confirmation("FILE")
             triggers = "|".join(config.VOICE_TRIGGERS['PLAY_FILE'])
             q = re.search(rf"(?:{triggers})\s+(.*)", content)
             if q:
@@ -178,6 +183,7 @@ class VoiceHandler:
 
         # 11. Repeat
         if any(w in content for w in config.VOICE_TRIGGERS['REPEAT']):
+            self.bot.play_action_confirmation("REPEAT")
             m = re.search(r"(\d+)", content)
             count = int(m.group(1)) if m else 1
             self.bot.repeat_music(count)
@@ -185,6 +191,7 @@ class VoiceHandler:
 
         # 12. Remind
         if any(w in content for w in config.VOICE_TRIGGERS.get('REMIND', [])):
+            self.bot.play_action_confirmation("REMIND")
             reminder = self._parse_reminder(content)
             if reminder:
                 seconds, time_text, message = reminder
@@ -196,6 +203,7 @@ class VoiceHandler:
 
         # 13. Status
         if any(w in content for w in config.VOICE_TRIGGERS.get('STATUS', [])):
+            self.bot.play_action_confirmation("STATUS")
             status = self.bot.get_status()
             summary = f"I am connected with an uptime of {status['Uptime']}. The LLM is {status['LLM']}. Listening is {status['Listening']}."
             self.bot.say_async(summary, user=user)
@@ -203,6 +211,7 @@ class VoiceHandler:
 
         # 14. Ping
         if any(w in content for w in config.VOICE_TRIGGERS.get('PING', [])):
+            self.bot.play_action_confirmation("PING")
             self.bot.say_async("Pong! I am here.", user=user)
             return True
 

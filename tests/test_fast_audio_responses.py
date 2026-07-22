@@ -98,6 +98,27 @@ class TestFastAudioResponses(unittest.TestCase):
         MadnessBot.play_action_confirmation(bot, "SEARCH")
         bot.mumble.sound_output.add_sound.assert_called_with(b"searching_info_pcm")
 
+    def test_voice_handler_triggers_action_confirmations(self):
+        """Test VoiceHandler calls play_action_confirmation for every command trigger."""
+        bot = MagicMock()
+        bot.listening_enabled = True
+        handler = VoiceHandler(bot)
+
+        # Test volume command
+        handler.handle("TestUser", "obama volume 50")
+        bot.play_action_confirmation.assert_called_with("VOLUME")
+
+        # Test skip command
+        bot.play_action_confirmation.reset_mock()
+        handler.handle("TestUser", "obama skip")
+        bot.play_action_confirmation.assert_called_with("SKIP")
+
+        # Test status command
+        bot.play_action_confirmation.reset_mock()
+        bot.get_status.return_value = {"Uptime": "1m", "LLM": "ok", "Listening": "yes"}
+        handler.handle("TestUser", "obama status")
+        bot.play_action_confirmation.assert_called_with("STATUS")
+
 
 if __name__ == "__main__":
     unittest.main()
