@@ -137,21 +137,6 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 
 Requires [botamusique](https://github.com/azlux/botamusique) running in the same Mumble channel. The bot sends botamusique chat commands (`!yplay`, `!stop`, `!skip`, `!volume`, etc.) to control playback.
 
-## Roadmap
-
-Planned improvements and feature ideas:
-
-- [ ] **Plugin system** — Load custom command handlers from a `plugins/` directory without modifying core code
-- [ ] **Per-user voice profiles** — Remember voice preferences, language, and conversation history per user
-- [ ] **Web dashboard** — Real-time status, logs, memory inspection, and configuration via a lightweight web UI
-- [ ] **Multi-language TTS** — Auto-detect response language and switch Kokoro voice accordingly
-- [ ] **Spotify / streaming integration** — Direct playback control beyond YouTube via botamusique
-- [ ] **Conversation summarization** — Periodic memory compaction via LLM summarization to extend effective context
-- [ ] **Voice-based user identification** — Speaker diarization to distinguish users without relying solely on Mumble metadata
-- [ ] **Scheduled tasks** — Cron-style recurring announcements, greetings, or automated actions
-- [ ] **RAG / knowledge base** — Feed the LLM documents or channel logs for informed, context-rich answers
-- [ ] **Configurable command prefix** — Allow changing `?` to any prefix via config
-
 ## Tests
 
 ```bash
