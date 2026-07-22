@@ -53,7 +53,10 @@ class MadnessBot:
         self.text_handler = TextHandler(self)
         self.voice_handler = VoiceHandler(self)
 
-
+        # Precache fast audio responses if enabled
+        self.precached_wakeword_pcms = []
+        self.precached_action_pcms = {}
+        self._precache_fast_audio_responses()
 
         # State
         self.listening_enabled = True
@@ -111,6 +114,77 @@ class MadnessBot:
                 self.logger.info(f"🔔 Chime loaded ({len(self.chime_pcm)} bytes)")
             except Exception as e:
                 self.logger.error(f"⚠️ Chime load error: {e}")
+
+    def _precache_fast_audio_responses(self):
+        """Generates precached fast audio responses on bot boot up if enabled."""
+        self.precached_wakeword_pcms = []
+        self.precached_action_pcms = {}
+
+        if not getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False):
+            return
+
+        self.logger.info("⚡ Generating precached fast audio responses on boot-up...")
+
+        # 1. Pre-cache wakeword responses
+        wakeword_phrases = getattr(config, "FAST_WAKEWORD_RESPONSES", [])
+        for phrase in wakeword_phrases:
+            try:
+                pcm = self.voice.generate_pcm(phrase)
+                if pcm:
+                    self.precached_wakeword_pcms.append(pcm)
+                    self.logger.info(f"  └─ Wakeword response '{phrase}': {len(pcm)} bytes")
+            except Exception as e:
+                self.logger.warning(f"Failed to precache wakeword response '{phrase}': {e}")
+
+        # 2. Pre-cache action confirmations
+        action_map = getattr(config, "FAST_ACTION_CONFIRMATIONS", {})
+        for category, phrase in action_map.items():
+            try:
+                pcm = self.voice.generate_pcm(phrase)
+                if pcm:
+                    self.precached_action_pcms[category] = pcm
+                    self.logger.info(f"  └─ Action confirmation '{category}' ('{phrase}'): {len(pcm)} bytes")
+            except Exception as e:
+                self.logger.warning(f"Failed to precache action confirmation for '{category}': {e}")
+
+        self.logger.info(
+            f"✅ Fast audio responses precached: {len(self.precached_wakeword_pcms)} wake responses, "
+            f"{len(self.precached_action_pcms)} action confirmations."
+        )
+
+    def play_ack_sound(self):
+        """
+        Plays an acknowledgment sound. If fast audio responses are enabled and available,
+        plays a randomly chosen fast wakeword response. Otherwise falls back to chime_pcm.
+        """
+        if not (self.mumble and self.mumble.sound_output):
+            return
+
+        sound_to_play = None
+        if getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False) and self.precached_wakeword_pcms:
+            sound_to_play = random.choice(self.precached_wakeword_pcms)
+        elif self.chime_pcm:
+            sound_to_play = self.chime_pcm
+
+        if sound_to_play:
+            try:
+                self.mumble.sound_output.add_sound(sound_to_play)
+            except Exception as e:
+                self.logger.error(f"Error playing ack sound: {e}")
+
+    def play_action_confirmation(self, category):
+        """
+        Plays a precached action confirmation sound for a specific category (e.g. MUSIC, SEARCH, THINK).
+        """
+        if not (self.mumble and self.mumble.sound_output):
+            return
+
+        if getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False) and category in self.precached_action_pcms:
+            sound_to_play = self.precached_action_pcms[category]
+            try:
+                self.mumble.sound_output.add_sound(sound_to_play)
+            except Exception as e:
+                self.logger.error(f"Error playing action confirmation '{category}': {e}")
 
     def setup_mumble(self):
         """Initializes Mumble connection and callbacks."""

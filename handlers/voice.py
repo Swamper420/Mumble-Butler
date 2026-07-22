@@ -68,14 +68,18 @@ class VoiceHandler:
             self.bot.stop_speaking()
             return True
 
-        # Play chime if configured
-        if self.bot.chime_pcm and self.bot.mumble and self.bot.mumble.sound_output:
-            self.bot.mumble.sound_output.add_sound(self.bot.chime_pcm)
+        # Play ack sound if configured (wakeword or chime)
+        self.bot.play_ack_sound()
 
         # 3. Process Logic
         handled = self._match_command(user, content)
 
         if not handled:
+            # Check if search keyword is present
+            if any(w in content for w in config.VOICE_TRIGGERS.get('SEARCH', [])):
+                self.bot.play_action_confirmation("SEARCH")
+            else:
+                self.bot.play_action_confirmation("THINK")
             # If no command matched, let the LLM answer
             self.bot.say_stream(f"User {user} says: {content}", user=user)
 
@@ -85,6 +89,7 @@ class VoiceHandler:
         """Matches content against config triggers."""
 
         if any(w in content for w in config.VOICE_TRIGGERS['FORGET']):
+            self.bot.play_action_confirmation("MEMORY")
             self.bot.brain.reset_memory()
             self.bot.say_async("Memory wiped.", user=user)
             return True
@@ -109,6 +114,7 @@ class VoiceHandler:
 
         # 4. Recommend
         if any(w in content for w in config.VOICE_TRIGGERS['RECOMMEND']):
+            self.bot.play_action_confirmation("MUSIC")
             desc = content
             for t in config.VOICE_TRIGGERS['RECOMMEND']:
                 desc = desc.replace(t, "")
@@ -125,6 +131,7 @@ class VoiceHandler:
 
         # 5. Play / Queue (Specific)
         if any(w in content for w in config.VOICE_TRIGGERS['PLAY_SPECIFIC']):
+            self.bot.play_action_confirmation("MUSIC")
             triggers = "|".join(config.VOICE_TRIGGERS['PLAY_SPECIFIC'])
             q = re.search(rf"(?:{triggers})\s+(.*)", content)
             if q:
@@ -133,6 +140,7 @@ class VoiceHandler:
 
         # 6. Play (Generic Music / "music")
         if any(w in content for w in config.VOICE_TRIGGERS['PLAY_MUSIC']):
+            self.bot.play_action_confirmation("MUSIC")
             rec, vibe = self.bot.brain.recommend_song(
                 "random music",
                 chat_context=self.bot.recent_transcripts,
@@ -151,6 +159,7 @@ class VoiceHandler:
 
         # 8. Stop (full halt)
         if any(w in content for w in config.VOICE_TRIGGERS['STOP']):
+            self.bot.play_action_confirmation("STOP")
             self.bot.stop_music()
             return True
 

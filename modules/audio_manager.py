@@ -97,11 +97,7 @@ class AudioManager:
             # Play chime instantly and interrupt active speech
             self.bot.stop_speaking()
             
-            if self.bot.chime_pcm and self.bot.mumble and self.bot.mumble.sound_output:
-                try:
-                    self.bot.mumble.sound_output.add_sound(self.bot.chime_pcm)
-                except Exception as e:
-                    self.bot.logger.error(f"Error playing chime: {e}")
+            self.bot.play_ack_sound()
 
     def prune_streams(self):
         """Optional: Remove old/empty streams to save memory."""

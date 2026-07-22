@@ -26,7 +26,7 @@ class ConfigManager:
         ("Paths & Files", ["STATS_FILE", "CHIME_FILE", "MUSIC_HISTORY_FILE", "CHATTERBOX_VOICE_DIR"]),
         ("LLM & Ollama", ["OLLAMA_", "LLM_", "WEB_SEARCH_"]),
         ("AI Models & Audio", ["MOONSHINE_", "WAKEWORD_", "SILENCE_THRESHOLD", "MIN_AUDIO_LENGTH", "POLL_RATE"]),
-        ("Voice & TTS", ["ACTIVATION_KEYWORDS", "MEMORY_ENABLED", "SYSTEM_PROMPT", "SHUTUP_KEYWORDS", "CHATTERBOX_"]),
+        ("Voice & TTS", ["ACTIVATION_KEYWORDS", "MEMORY_ENABLED", "SYSTEM_PROMPT", "SHUTUP_KEYWORDS", "CHATTERBOX_", "FAST_AUDIO_", "FAST_WAKEWORD_", "FAST_ACTION_"]),
         ("Triggers & Commands", ["VOICE_TRIGGERS", "MUMBLE_COMMANDS", "TEXT_TRIGGERS"]),
         ("Recommender", ["RECOMMENDER_"]),
     ]

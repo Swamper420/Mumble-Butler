@@ -71,6 +71,19 @@ CHATTERBOX_VOICE_DIR = os.getenv("CHATTERBOX_VOICE_DIR", "data/voices")
 CHATTERBOX_DEFAULT_VOICE = os.getenv("CHATTERBOX_DEFAULT_VOICE", "michael")
 CHATTERBOX_TEMPERATURE = float(os.getenv("CHATTERBOX_TEMPERATURE", "0.8"))
 
+# --- FAST PRECACHED AUDIO RESPONSES (EXPERIMENTAL) ---
+FAST_AUDIO_RESPONSES_ENABLED = os.getenv("FAST_AUDIO_RESPONSES_ENABLED", "False").lower() == "true"
+FAST_WAKEWORD_RESPONSES = [
+    p.strip() for p in os.getenv("FAST_WAKEWORD_RESPONSES", "Yes?, [chuckle], Listening..., Mm?, Sir?, Yo").split(",") if p.strip()
+]
+FAST_ACTION_CONFIRMATIONS = {
+    "MUSIC": os.getenv("FAST_ACTION_MUSIC", "Fetching song..."),
+    "SEARCH": os.getenv("FAST_ACTION_SEARCH", "Searching up to date information..."),
+    "THINK": os.getenv("FAST_ACTION_THINK", "Let me see..."),
+    "MEMORY": os.getenv("FAST_ACTION_MEMORY", "Wiping memory..."),
+    "STOP": os.getenv("FAST_ACTION_STOP", "Stopping..."),
+}
+
 # --- VOICE COMMAND TRIGGERS ---
 VOICE_TRIGGERS = {
     'FORGET': ["forget"],
