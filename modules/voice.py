@@ -12,6 +12,16 @@ class Voice:
         self.engine = "chatterbox-turbo"
         self.conds_cache = {}
 
+        # Optimize PyTorch CPU threading & CUDA matrix flags to relieve CPU bottlenecks
+        cpu_cores = os.cpu_count() or 4
+        if hasattr(torch, "set_num_threads"):
+            torch.set_num_threads(min(cpu_cores, 8))
+        if hasattr(torch, "set_num_interop_threads"):
+            torch.set_num_interop_threads(min(cpu_cores, 4))
+        if torch.cuda.is_available():
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+
         print(f"🗣️ Loading Chatterbox-Turbo TTS ({self.device})...")
         from chatterbox.tts_turbo import ChatterboxTurboTTS
         self.model = ChatterboxTurboTTS.from_pretrained(device=self.device)
@@ -24,7 +34,8 @@ class Voice:
         if os.path.exists(default_path):
             try:
                 print(f"🔥 Pre-warming conditionals cache for default voice: {self.current_voice_id}...")
-                self.model.prepare_conditionals(default_path)
+                with torch.inference_mode():
+                    self.model.prepare_conditionals(default_path)
                 self.conds_cache[self.current_voice_id] = self.model.conds
             except Exception as e:
                 print(f"⚠️ Failed to pre-warm default voice cache: {e}")
@@ -73,38 +84,56 @@ class Voice:
             if not os.path.exists(voice_path):
                 raise FileNotFoundError(f"Reference voice wav not found at {voice_path}")
 
-            # Load voice conditionals from cache or prepare and cache them
-            if target_voice in self.conds_cache:
-                self.model.conds = self.conds_cache[target_voice]
-            else:
-                # Evict previous voice conditionals if cache limit reached
-                max_cache = getattr(config, "CHATTERBOX_VOICE_CACHE_LIMIT", 1)
-                if max_cache > 0:
-                    while len(self.conds_cache) >= max_cache:
-                        oldest_voice = next(iter(self.conds_cache))
-                        del self.conds_cache[oldest_voice]
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
+            with torch.inference_mode():
+                # Load voice conditionals from cache or prepare and cache them
+                if target_voice in self.conds_cache:
+                    self.model.conds = self.conds_cache[target_voice]
+                else:
+                    # Evict previous voice conditionals if cache limit reached
+                    max_cache = getattr(config, "CHATTERBOX_VOICE_CACHE_LIMIT", 1)
+                    if max_cache > 0:
+                        while len(self.conds_cache) >= max_cache:
+                            oldest_voice = next(iter(self.conds_cache))
+                            del self.conds_cache[oldest_voice]
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
 
-                self.model.prepare_conditionals(voice_path)
-                self.conds_cache[target_voice] = self.model.conds
+                    self.model.prepare_conditionals(voice_path)
+                    self.conds_cache[target_voice] = self.model.conds
 
-            # Generate audio using Chatterbox-Turbo with cached conditionals
-            wav_tensor = self.model.generate(
-                text,
-                audio_prompt_path=None,
-                temperature=getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
-            )
+                # Generate audio using Chatterbox-Turbo with cached conditionals
+                wav_tensor = self.model.generate(
+                    text,
+                    audio_prompt_path=None,
+                    temperature=getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
+                )
 
-            # Convert torch tensor to numpy float array
-            audio_np = wav_tensor.detach().cpu().numpy()
-            if audio_np.ndim > 1:
-                audio_np = audio_np.squeeze()
+                # Resample and convert float32 to PCM int16 directly on GPU tensor if available
+                sr = getattr(self.model, "sr", 24000)
+                if torch.is_tensor(wav_tensor) and wav_tensor.numel() > 0:
+                    curr = wav_tensor.detach()
+                    if sr != 48000:
+                        if curr.ndim == 1:
+                            curr = curr.unsqueeze(0).unsqueeze(0)
+                        elif curr.ndim == 2:
+                            curr = curr.unsqueeze(1)
+                        target_len = int(curr.shape[-1] * (48000 / sr))
+                        curr = torch.nn.functional.interpolate(
+                            curr, size=target_len, mode='linear', align_corners=False
+                        ).squeeze()
+                    else:
+                        curr = curr.squeeze()
 
-            # Resample to 48000 for Mumble
-            sr = getattr(self.model, "sr", 24000)
-            audio_48k = resample_audio(audio_np, sr, 48000)
-            return float_to_pcm(audio_48k)
+                    pcm_tensor = (curr * 32767).clamp(-32768, 32767).to(torch.int16)
+                    return pcm_tensor.cpu().numpy().tobytes()
+
+                # Fallback for non-tensor outputs
+                audio_np = wav_tensor.detach().cpu().numpy() if torch.is_tensor(wav_tensor) else wav_tensor
+                if audio_np.ndim > 1:
+                    audio_np = audio_np.squeeze()
+
+                audio_48k = resample_audio(audio_np, sr, 48000)
+                return float_to_pcm(audio_48k)
         except Exception as e:
             print(f"TTS Error: {e}")
             return None
