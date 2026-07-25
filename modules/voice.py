@@ -23,8 +23,8 @@ class Voice:
             torch.backends.cudnn.allow_tf32 = True
 
         print(f"🗣️ Loading Chatterbox-Nano TTS ({self.device})...")
-        from chatterbox.tts_nano import ChatterboxNanoTTS
-        self.model = ChatterboxNanoTTS.from_pretrained(device=self.device)
+        from chatterbox.tts_turbo import ChatterboxTurboTTS
+        self.model = ChatterboxTurboTTS.from_pretrained(device=self.device, nano=True)
         self.current_voice_id = getattr(config, "CHATTERBOX_DEFAULT_VOICE", "michael")
         self._ensure_default_voice()
 
