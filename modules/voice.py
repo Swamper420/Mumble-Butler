@@ -29,6 +29,18 @@ class Voice:
             except Exception as e:
                 print(f"⚠️ Failed to pre-warm default voice cache: {e}")
 
+    def clear_voice_cache(self, keep_voice: str = None):
+        """Clears cached voice conditionals from dictionary and frees GPU VRAM."""
+        if keep_voice:
+            keys_to_del = [k for k in self.conds_cache if k != keep_voice]
+            for k in keys_to_del:
+                del self.conds_cache[k]
+        else:
+            self.conds_cache.clear()
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
     def _ensure_default_voice(self):
         """Creates the voice directory and downloads a default speech WAV if missing."""
         voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
@@ -65,6 +77,15 @@ class Voice:
             if target_voice in self.conds_cache:
                 self.model.conds = self.conds_cache[target_voice]
             else:
+                # Evict previous voice conditionals if cache limit reached
+                max_cache = getattr(config, "CHATTERBOX_VOICE_CACHE_LIMIT", 1)
+                if max_cache > 0:
+                    while len(self.conds_cache) >= max_cache:
+                        oldest_voice = next(iter(self.conds_cache))
+                        del self.conds_cache[oldest_voice]
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+
                 self.model.prepare_conditionals(voice_path)
                 self.conds_cache[target_voice] = self.model.conds
 
