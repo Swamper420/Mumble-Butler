@@ -74,15 +74,20 @@ class AudioManager:
 
         # Run ONNX inference outside the lock
         detected = False
+        min_hits = getattr(config, 'WAKEWORD_CONSECUTIVE_HITS', 2)
         if chunks_to_predict and stream.wakeword_model:
             for chunk in chunks_to_predict:
                 predictions = stream.wakeword_model.predict(chunk)
-                for score in predictions.values():
-                    if score >= config.WAKEWORD_THRESHOLD:
+                hit = any(score >= config.WAKEWORD_THRESHOLD for score in predictions.values())
+                with stream.lock:
+                    if hit:
+                        stream.consecutive_hits += 1
+                    else:
+                        stream.consecutive_hits = 0
+
+                    if stream.consecutive_hits >= min_hits:
                         detected = True
                         break
-                if detected:
-                    break
 
         trigger_bot_reaction = False
         with stream.lock:
@@ -138,7 +143,7 @@ class AudioManager:
                 if not wakeword_ok:
                     with stream.lock:
                         stream.buffer.clear()
-                        stream.accumulated_16k_bytes.clear()
+                        stream.reset_wakeword_state()
                     continue
 
                 raw_audio = stream.extract_audio()

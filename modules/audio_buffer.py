@@ -16,9 +16,14 @@ class UserVoiceStream:
         self.accumulated_16k_bytes = bytearray()
         self.wakeword_model = None
         self.pending_wakeword_chunks = 0
+        self.consecutive_hits = 0
         
         if bot and hasattr(bot, 'wakeword_detector') and bot.wakeword_detector.enabled:
-            self.wakeword_model = getattr(bot.wakeword_detector, 'model', None)
+            detector = bot.wakeword_detector
+            if hasattr(detector, 'create_stream_model'):
+                self.wakeword_model = detector.create_stream_model()
+            else:
+                self.wakeword_model = getattr(detector, 'model', None)
 
     def add_data(self, pcm_data):
         with self.lock:
@@ -29,12 +34,22 @@ class UserVoiceStream:
                 self.buffer = self.buffer[-max_bytes:]
             self.last_packet_time = time.time()
 
+    def reset_wakeword_state(self):
+        """Resets stream-level wakeword state and clears openwakeword internal prediction buffers."""
+        self.wakeword_detected = False
+        self.accumulated_16k_bytes.clear()
+        self.pending_wakeword_chunks = 0
+        self.consecutive_hits = 0
+        if self.wakeword_model and hasattr(self.wakeword_model, 'reset'):
+            try:
+                self.wakeword_model.reset()
+            except Exception:
+                pass
+
     def extract_audio(self):
         with self.lock:
             data = bytes(self.buffer)
             self.buffer.clear()
-            self.wakeword_detected = False
-            self.accumulated_16k_bytes.clear()
-            self.pending_wakeword_chunks = 0
+            self.reset_wakeword_state()
             return data
 

@@ -47,6 +47,16 @@ class WakewordDetector:
         else:
             return Model()
 
+    def create_stream_model(self):
+        """Creates an isolated openWakeWord Model instance for a stream."""
+        if not self.enabled:
+            return None
+        try:
+            return self.create_model_instance()
+        except Exception as e:
+            print(f"⚠️ Error creating stream openWakeWord model instance: {e}")
+            return self.model
+
 
     def has_wakeword(self, raw_pcm: bytes) -> bool:
         if not self.enabled or not self.model:
