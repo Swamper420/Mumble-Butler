@@ -3,11 +3,19 @@ import re
 import requests
 import config
 
+CLEAN_USER_PREFIX = re.compile(r'^User\s+.*?\s+(says|asks):\s*', re.IGNORECASE)
+CLEAN_WAKEWORD = re.compile(r'^(obama|opama|opal|opa)[,\s]+', re.IGNORECASE)
+CLEAN_SEARCH_VERB = re.compile(r'^(search|google|look up|find info for|find info on)\s+', re.IGNORECASE)
+LINK_PATTERN = re.compile(r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL)
+SNIPPET_PATTERN = re.compile(r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL)
+HTML_TAG_PATTERN = re.compile(r'<[^>]+>')
+
 
 class WebSearcher:
     def __init__(self):
         self.enabled = getattr(config, 'WEB_SEARCH_ENABLED', True)
         self.default_max_results = getattr(config, 'WEB_SEARCH_MAX_RESULTS', 3)
+        self.session = requests.Session()
         self.headers = {
             "User-Agent": (
                 "Mozilla/5.0 (X11; Linux x86_64) "
@@ -23,43 +31,47 @@ class WebSearcher:
 
         prompt_lower = prompt.lower().strip()
 
-        # Exclude trivial small talk / greetings / short conversational phrases
+        # Exclude trivial small talk / greetings / conversational queries / math
         small_talk = [
             "hi", "hello", "hey", "how are you", "who are you", "what is your name",
             "what's your name", "thank you", "thanks", "bye", "goodbye", "good morning",
-            "good night", "ping", "shut up", "stop", "forget", "undo", "help"
+            "good night", "ping", "shut up", "stop", "forget", "undo", "help",
+            "what can you do", "tell me a joke", "tell a joke", "sing a song"
         ]
         if prompt_lower in small_talk or prompt_lower.rstrip("?!.") in small_talk:
             return False
 
-        # If prompt is a 1-2 word greeting (e.g. "hey obama"), skip
+        # Skip short greetings or simple arithmetic
         words = prompt_lower.split()
         if len(words) <= 2 and all(w in ["hi", "hello", "hey", "obama", "bot", "there", "yo"] for w in words):
             return False
 
-        # Direct search & factual keywords
+        # Skip simple arithmetic expressions (e.g. "what is 2+2")
+        if re.search(r'^\s*(what\s+is\s+)?\d+[\s\+\-\*\/\^]+\d+\s*\??$', prompt_lower):
+            return False
+
+        # Direct search & real-time factual keywords
         explicit_triggers = [
             "search", "google", "look up", "find info", "browse",
-            "weather", "news", "score", "price", "who is", "what is", "where is",
-            "when is", "how to", "who won", "latest", "today", "current", "release date",
-            "capital of", "president", "prime minister", "definition", "stats", "schedule"
+            "weather", "news", "score", "stock price", "who won", "latest", "today",
+            "current", "release date", "capital of", "president of", "prime minister",
+            "schedule", "match result", "patch notes"
         ]
         if any(trig in prompt_lower for trig in explicit_triggers):
             return True
 
-        # Any question starters or questions containing '?'
-        question_starters = (
-            "who", "what", "where", "when", "why", "how", "which",
-            "is ", "are ", "did ", "does ", "can ", "has ", "have ", "tell me"
+        # Factual query triggers
+        factual_questions = (
+            "who is ", "where is ", "when is ", "what is the price", "what time is",
+            "what happened to", "how much is", "how to "
         )
-        if prompt_lower.startswith(question_starters) or "?" in prompt:
+        if prompt_lower.startswith(factual_questions):
             return True
 
         # Topic indicators
         topic_keywords = [
-            "weather", "news", "score", "match", "stock", "price", "crypto",
-            "event", "election", "release", "movie", "game", "winner", "result",
-            "population", "update", "patch", "version", "specs", "location", "address"
+            "weather", "news", "score", "stock", "crypto", "election",
+            "patch", "specs", "location", "address", "release date"
         ]
         if any(kw in prompt_lower for kw in topic_keywords):
             return True
@@ -75,9 +87,9 @@ class WebSearcher:
             max_results = self.default_max_results
 
         # Strip user prefixes like "User <name> says:", wake words, and explicit search verbs
-        clean_query = re.sub(r'^User\s+.*?\s+(says|asks):\s*', '', query, flags=re.IGNORECASE).strip()
-        clean_query = re.sub(r'^(obama|opama|opal|opa)[,\s]+', '', clean_query, flags=re.IGNORECASE).strip()
-        clean_query = re.sub(r'^(search|google|look up|find info for|find info on)\s+', '', clean_query, flags=re.IGNORECASE).strip()
+        clean_query = CLEAN_USER_PREFIX.sub('', query).strip()
+        clean_query = CLEAN_WAKEWORD.sub('', clean_query).strip()
+        clean_query = CLEAN_SEARCH_VERB.sub('', clean_query).strip()
 
         if not clean_query:
             clean_query = query
@@ -85,7 +97,7 @@ class WebSearcher:
         try:
             url = "https://html.duckduckgo.com/html/"
             data = {"q": clean_query}
-            response = requests.post(url, data=data, headers=self.headers, timeout=6)
+            response = self.session.post(url, data=data, headers=self.headers, timeout=6)
             response.raise_for_status()
 
             return self._parse_html_results(response.text, max_results=max_results)

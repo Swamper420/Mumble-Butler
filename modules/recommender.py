@@ -2,13 +2,20 @@ import requests
 import random
 import json
 import os
+import re
 import config
+
+SQUARE_BRACKETS_RE = re.compile(r'\[.*?\]')
+NOISE_PARENS_RE = re.compile(r'\((?:[^\)]*(?:remaster|live|deluxe|version|edition|feat|ft|audio|video|edit|mix)[^\)]*)\)', re.IGNORECASE)
+FEAT_CLAUSE_RE = re.compile(r'\b(?:feat|ft)\.?\s+[^\s-]+', re.IGNORECASE)
+NON_ALPHANUM_RE = re.compile(r'[^a-z0-9\s]')
 
 class MusicRecommender:
     def __init__(self):
         self.history_file = config.MUSIC_HISTORY_FILE
         self.max_history = config.RECOMMENDER_MAX_HISTORY
         self.history = self._load_history()
+        self.session = requests.Session()
 
     def _load_history(self):
         if os.path.exists(self.history_file):
@@ -37,16 +44,11 @@ class MusicRecommender:
     def _normalize_track(self, track_name):
         if not track_name:
             return ""
-        import re
         normalized = track_name.lower().strip()
-        # Strip square brackets like [Official Video], [HD], etc.
-        normalized = re.sub(r'\[.*?\]', '', normalized)
-        # Strip parens containing common noise like (remaster...), (live...), (feat...)
-        normalized = re.sub(r'\((?:[^\)]*(?:remaster|live|deluxe|version|edition|feat|ft|audio|video|edit|mix)[^\)]*)\)', '', normalized)
-        # Strip standalone feat / ft clauses
-        normalized = re.sub(r'\b(?:feat|ft)\.?\s+[^\s-]+', '', normalized)
-        # Clean non-alphanumeric chars
-        normalized = re.sub(r'[^a-z0-9\s]', ' ', normalized)
+        normalized = SQUARE_BRACKETS_RE.sub('', normalized)
+        normalized = NOISE_PARENS_RE.sub('', normalized)
+        normalized = FEAT_CLAUSE_RE.sub('', normalized)
+        normalized = NON_ALPHANUM_RE.sub(' ', normalized)
         return ' '.join(normalized.split())
 
     def is_in_history(self, track_name):
@@ -73,7 +75,7 @@ class MusicRecommender:
                 "entity": "song",
                 "media": "music"
             }
-            response = requests.get(url, params=params, timeout=timeout)
+            response = self.session.get(url, params=params, timeout=timeout)
             response.raise_for_status()
             data = response.json()
 

@@ -19,6 +19,7 @@ class Brain:
         self.llm = None
         self.lock = threading.Lock()
         self.history = []
+        self.session = requests.Session() if LLM_AVAILABLE else None
         self.recommender = MusicRecommender()
         self.searcher = WebSearcher()
 
@@ -35,7 +36,7 @@ class Brain:
             host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
             url = f"{host}/api/tags"
             timeout = getattr(config, 'OLLAMA_CONNECT_TIMEOUT', 3)
-            res = requests.get(url, timeout=timeout)
+            res = (self.session or requests).get(url, timeout=timeout)
             if res.status_code == 200:
                 print("🧠 Connected to Ollama API.")
                 self.llm = True
@@ -135,7 +136,7 @@ class Brain:
         if stop:
             payload["options"]["stop"] = stop
 
-        response = requests.post(url, json=payload, timeout=timeout)
+        response = (self.session or requests).post(url, json=payload, timeout=timeout)
         response.raise_for_status()
         data = response.json()
         content = data.get("message", {}).get("content", "")
@@ -181,12 +182,11 @@ class Brain:
         messages.append({"role": "user", "content": formatted_prompt})
 
         try:
-            with self.lock:
-                output = self._chat_completion(
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    stop=stop
-                )
+            output = self._chat_completion(
+                messages=messages,
+                max_tokens=max_tokens,
+                stop=stop
+            )
 
             text = output['choices'][0]['message']['content']
             # Clean tags
@@ -234,13 +234,12 @@ class Brain:
             in_think_block = False
 
             if hasattr(self.llm, 'create_chat_completion'):
-                with self.lock:
-                    output = self.llm.create_chat_completion(
-                        messages=messages,
-                        max_tokens=max_tokens,
-                        stop=stop,
-                        stream=True
-                    )
+                output = self.llm.create_chat_completion(
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    stop=stop,
+                    stream=True
+                )
                 for chunk in output:
                     choices = chunk.get('choices', [])
                     if not choices:
@@ -291,8 +290,7 @@ class Brain:
                 if stop:
                     payload["options"]["stop"] = stop
 
-                with self.lock:
-                    response = requests.post(url, json=payload, stream=True, timeout=timeout)
+                response = (self.session or requests).post(url, json=payload, stream=True, timeout=timeout)
                 response.raise_for_status()
 
                 yielded_any = False
@@ -466,12 +464,11 @@ class Brain:
         ]
 
         try:
-            with self.lock:
-                output = self._chat_completion(
-                    messages=messages,
-                    max_tokens=300,
-                    temperature=0.7
-                )
+            output = self._chat_completion(
+                messages=messages,
+                max_tokens=300,
+                temperature=0.7
+            )
 
             llm_text = self._strip_thinking(output['choices'][0]['message']['content'].strip())
             intent, vibe, recommendations = self.parse_recommendation_output(llm_text)
@@ -527,11 +524,10 @@ class Brain:
         ]
 
         try:
-            with self.lock:
-                output = self._chat_completion(
-                    messages=messages,
-                    max_tokens=350
-                )
+            output = self._chat_completion(
+                messages=messages,
+                max_tokens=350
+            )
             return self._strip_thinking(output['choices'][0]['message']['content'].strip().replace('"', ''))
         except Exception as e:
             print(f"Report generation error: {e}")

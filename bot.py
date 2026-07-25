@@ -2,10 +2,14 @@ import os
 import subprocess
 import time
 import signal
+import re
 from datetime import datetime, timedelta
 import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
+
+CLAUSE_DELIMITERS = re.compile(r'(?<=[.!?,\n;:—\-])\s+|(?<=\.\.\.)\s+|\n+')
+WHITESPACE_RE = re.compile(r'\s+')
 
 import pymumble_py3 as pymumble
 import config
@@ -71,7 +75,7 @@ class MadnessBot:
         self.loop = asyncio.new_event_loop()
         self.queue = asyncio.Queue()
         self.speech_generation = 0
-        self.executor = ThreadPoolExecutor(max_workers=40)
+        self.executor = ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 4)))
 
         self.recent_transcripts = []
         self.transcript_lock = threading.Lock()
@@ -579,20 +583,17 @@ class MadnessBot:
             self.send_chat(f"<b>Error:</b> Failed to save voiceline: {e}")
 
     def say_async(self, text, user=None):
-        import re
         speech_generation = self.speech_generation
-        clause_delimiters = re.compile(r'(?<=[.!?,\n;:—\-])\s+|(?<=\.\.\.)\s+|\n+')
-        sentences = clause_delimiters.split(text)
+        sentences = CLAUSE_DELIMITERS.split(text)
         for sentence in sentences:
             cleaned = sentence.replace("\\n", " ").replace("/n", " ").replace("\\t", " ").replace("/t", " ")
-            cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+            cleaned = WHITESPACE_RE.sub(' ', cleaned).strip()
             if cleaned:
                 self.loop.call_soon_threadsafe(self.queue.put_nowait, (speech_generation, cleaned, user))
 
     def _extract_phrases(self, buffer_text):
         """Splits buffer into complete phrases on punctuation or word count limits."""
-        import re
-        parts = re.split(r'(?<=[.!?,\n;:—\-])\s+|(?<=\.\.\.)\s+|\n+', buffer_text)
+        parts = CLAUSE_DELIMITERS.split(buffer_text)
         if len(parts) > 1:
             return parts[:-1], parts[-1]
         

@@ -55,7 +55,7 @@ class AudioManager:
         
         # Downsample incoming 48kHz audio to 16kHz directly in int16
         audio_int16 = np.frombuffer(pcm_data, dtype=np.int16)
-        audio_16k_int16 = resample_int16(audio_int16, 48000, 16000)
+        audio_16k_bytes = resample_int16(audio_int16, 48000, 16000).tobytes()
         
         chunks_to_predict = []
         with stream.lock:
@@ -63,14 +63,14 @@ class AudioManager:
                 stream.pending_wakeword_chunks -= 1
                 return
 
-            # Accumulate and extract complete 1280-sample (80ms) chunks
-            stream.accumulated_16k_int16 = np.concatenate((stream.accumulated_16k_int16, audio_16k_int16))
+            # Accumulate 16k audio bytes efficiently in bytearray
+            stream.accumulated_16k_bytes.extend(audio_16k_bytes)
             
-            chunk_size = 1280
-            while len(stream.accumulated_16k_int16) >= chunk_size:
-                chunk = stream.accumulated_16k_int16[:chunk_size]
-                stream.accumulated_16k_int16 = stream.accumulated_16k_int16[chunk_size:]
-                chunks_to_predict.append(chunk)
+            chunk_bytes = 2560  # 1280 samples * 2 bytes/sample (int16)
+            while len(stream.accumulated_16k_bytes) >= chunk_bytes:
+                raw_chunk = bytes(stream.accumulated_16k_bytes[:chunk_bytes])
+                del stream.accumulated_16k_bytes[:chunk_bytes]
+                chunks_to_predict.append(np.frombuffer(raw_chunk, dtype=np.int16))
 
         # Run ONNX inference outside the lock
         detected = False
@@ -138,7 +138,7 @@ class AudioManager:
                 if not wakeword_ok:
                     with stream.lock:
                         stream.buffer.clear()
-                        stream.accumulated_16k_int16 = np.array([], dtype=np.int16)
+                        stream.accumulated_16k_bytes.clear()
                     continue
 
                 raw_audio = stream.extract_audio()

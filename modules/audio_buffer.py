@@ -13,15 +13,12 @@ class UserVoiceStream:
         
         # Streaming wakeword state
         self.wakeword_detected = False
-        self.accumulated_16k_int16 = np.array([], dtype=np.int16)
+        self.accumulated_16k_bytes = bytearray()
         self.wakeword_model = None
         self.pending_wakeword_chunks = 0
         
         if bot and hasattr(bot, 'wakeword_detector') and bot.wakeword_detector.enabled:
-            try:
-                self.wakeword_model = bot.wakeword_detector.create_model_instance()
-            except Exception as e:
-                print(f"❌ Error instantiating openwakeword for {name}: {e}")
+            self.wakeword_model = getattr(bot.wakeword_detector, 'model', None)
 
     def add_data(self, pcm_data):
         with self.lock:
@@ -37,12 +34,7 @@ class UserVoiceStream:
             data = bytes(self.buffer)
             self.buffer.clear()
             self.wakeword_detected = False
-            self.accumulated_16k_int16 = np.array([], dtype=np.int16)
+            self.accumulated_16k_bytes.clear()
             self.pending_wakeword_chunks = 0
-            if self.wakeword_model:
-                try:
-                    self.wakeword_model.reset()
-                except:
-                    pass
             return data
 
