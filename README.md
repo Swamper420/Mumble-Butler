@@ -118,8 +118,9 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 | `WAKEWORD_THRESHOLD` | `0.5` | Detection threshold |
 | `ACTIVATION_KEYWORDS` | `obama,opama,opal,opa` | Keyword fallback list |
 | **TTS** | | |
-| `KOKORO_VOICE_ID` | `am_michael` | Default voice |
-| `KOKORO_SPEED` | `0.9` | Speech speed |
+| `CHATTERBOX_MODEL` | `turbo` | Model variant (`turbo`, `standard`, `multilingual`) |
+| `CHATTERBOX_DEFAULT_VOICE` | `michael` | Default voice reference name |
+| `CHATTERBOX_TEMPERATURE` | `0.8` | Generation temperature |
 | **Audio** | | |
 | `SILENCE_THRESHOLD` | `0.5` | Silence gap to end clip (seconds) |
 | `MIN_AUDIO_LENGTH` | `0.3` | Minimum clip length (seconds) |

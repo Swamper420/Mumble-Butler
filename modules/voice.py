@@ -9,7 +9,8 @@ from utils import resample_audio, float_to_pcm
 class Voice:
     def __init__(self):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.engine = "chatterbox-nano"
+        model_type = getattr(config, "CHATTERBOX_MODEL", "turbo").lower()
+        self.engine = f"chatterbox-{model_type}"
         self.conds_cache = {}
 
         # Optimize PyTorch CPU threading & CUDA matrix flags to relieve CPU bottlenecks
@@ -22,9 +23,16 @@ class Voice:
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
 
-        print(f"🗣️ Loading Chatterbox-Nano TTS ({self.device})...")
-        from chatterbox.tts_turbo import ChatterboxTurboTTS
-        self.model = ChatterboxTurboTTS.from_pretrained(device=self.device, nano=True)
+        print(f"🗣️ Loading Chatterbox ({model_type.upper()}) TTS ({self.device})...")
+        if model_type in ["standard", "base", "chatterbox"]:
+            from chatterbox.tts import ChatterboxTTS
+            self.model = ChatterboxTTS.from_pretrained(device=self.device)
+        elif model_type in ["multilingual", "mtl"]:
+            from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+            self.model = ChatterboxMultilingualTTS.from_pretrained(device=self.device)
+        else:
+            from chatterbox.tts_turbo import ChatterboxTurboTTS
+            self.model = ChatterboxTurboTTS.from_pretrained(device=self.device)
         self.current_voice_id = getattr(config, "CHATTERBOX_DEFAULT_VOICE", "michael")
         self._ensure_default_voice()
 
