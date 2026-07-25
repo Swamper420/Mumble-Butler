@@ -44,7 +44,7 @@ WEB_SEARCH_MAX_RESULTS = int(os.getenv("WEB_SEARCH_MAX_RESULTS", "3"))
 
 
 # --- AI CONFIG ---
-MOONSHINE_MODEL_SIZE = os.getenv("MOONSHINE_MODEL_SIZE", "UsefulSensors/moonshine-streaming-medium")
+MOONSHINE_MODEL_SIZE = os.getenv("MOONSHINE_MODEL_SIZE", "UsefulSensors/moonshine-streaming-small")
 MOONSHINE_DEVICE = os.getenv("MOONSHINE_DEVICE", "cuda")
 
 

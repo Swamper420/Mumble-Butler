@@ -9,7 +9,7 @@ A voice-activated AI butler for Mumble. Listens for a wake word, transcribes spe
 | 🎙️ **Speech-to-Text** | [Moonshine](https://github.com/UsefulSensors/moonshine) streaming model via HuggingFace Transformers |
 | 🔔 **Wake Word** | [openWakeWord](https://github.com/dscripka/openWakeWord) with real-time streaming detection + keyword fallback with fuzzy matching ([rapidfuzz](https://github.com/rapidfuzz/RapidFuzz)) |
 | 🧠 **LLM API** | External [Ollama](https://ollama.com) API integration supporting any model with streaming responses |
-| 🗣️ **Text-to-Speech** | [Chatterbox-Turbo](https://github.com/resemble-ai/chatterbox) voice cloning with sentence-level streaming for low latency |
+| 🗣️ **Text-to-Speech** | [Chatterbox-Nano](https://github.com/resemble-ai/chatterbox) voice cloning with sentence-level streaming for low latency |
 | 🎵 **Music** | YouTube playback, LLM-seeded recommendations via iTunes API, history-aware deduplication — all via [botamusique](https://github.com/azlux/botamusique) |
 | 💬 **Dual Interface** | Full command set via both voice and Mumble text chat |
 | 🕒 **Hourly Reports** | Context-aware room status updates based on who's present and recent conversation |
@@ -38,7 +38,7 @@ python main.py
 main.py → MadnessBot (bot.py)
 ├── Brain         — LLM inference, memory, music recommendations
 ├── Ear           — Moonshine speech-to-text
-├── Voice         — Chatterbox-Turbo text-to-speech
+├── Voice         — Chatterbox-Nano text-to-speech
 ├── AudioManager  — Voice activity detection & per-user buffering
 ├── WakewordDetector — openWakeWord streaming detection
 ├── VoiceHandler  — Voice command routing (fuzzy keyword matching)
@@ -109,7 +109,7 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 | `LLM_MAX_TOKENS` | `1024` | Max tokens per response |
 | `LLM_CONTEXT_SIZE` | `2000` | Context window size |
 | **Speech Recognition** | | |
-| `MOONSHINE_MODEL_SIZE` | `UsefulSensors/moonshine-streaming-medium` | Moonshine model |
+| `MOONSHINE_MODEL_SIZE` | `UsefulSensors/moonshine-streaming-small` | Moonshine model |
 | `MOONSHINE_DEVICE` | `cuda` | `cuda` or `cpu` |
 | **Wake Word** | | |
 | `WAKEWORD_LIBRARY` | `openwakeword` | Wake word engine |

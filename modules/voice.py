@@ -9,7 +9,7 @@ from utils import resample_audio, float_to_pcm
 class Voice:
     def __init__(self):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.engine = "chatterbox-turbo"
+        self.engine = "chatterbox-nano"
         self.conds_cache = {}
 
         # Optimize PyTorch CPU threading & CUDA matrix flags to relieve CPU bottlenecks
@@ -22,9 +22,9 @@ class Voice:
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
 
-        print(f"🗣️ Loading Chatterbox-Turbo TTS ({self.device})...")
-        from chatterbox.tts_turbo import ChatterboxTurboTTS
-        self.model = ChatterboxTurboTTS.from_pretrained(device=self.device)
+        print(f"🗣️ Loading Chatterbox-Nano TTS ({self.device})...")
+        from chatterbox.tts_nano import ChatterboxNanoTTS
+        self.model = ChatterboxNanoTTS.from_pretrained(device=self.device)
         self.current_voice_id = getattr(config, "CHATTERBOX_DEFAULT_VOICE", "michael")
         self._ensure_default_voice()
 
@@ -67,7 +67,7 @@ class Voice:
                 print(f"⚠️ Failed to download default voice: {e}")
 
     def generate_pcm(self, text: str, voice_id: str = None):
-        """Generates 48khz PCM bytes from text using Chatterbox-Turbo."""
+        """Generates 48khz PCM bytes from text using Chatterbox-Nano."""
         try:
             target_voice = voice_id or self.current_voice_id
             voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
@@ -101,7 +101,7 @@ class Voice:
                     self.model.prepare_conditionals(voice_path)
                     self.conds_cache[target_voice] = self.model.conds
 
-                # Generate audio using Chatterbox-Turbo with cached conditionals
+                # Generate audio using Chatterbox-Nano with cached conditionals
                 wav_tensor = self.model.generate(
                     text,
                     audio_prompt_path=None,
