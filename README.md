@@ -118,7 +118,7 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 | `WAKEWORD_THRESHOLD` | `0.5` | Detection threshold |
 | `ACTIVATION_KEYWORDS` | `obama,opama,opal,opa` | Keyword fallback list |
 | **TTS** | | |
-| `CHATTERBOX_MODEL` | `turbo` | Model variant (`turbo`, `standard`, `multilingual`) |
+| `CHATTERBOX_MODEL` | `nano` | Model variant (`nano`, `turbo`, `standard`, `multilingual`) |
 | `CHATTERBOX_DEFAULT_VOICE` | `michael` | Default voice reference name |
 | `CHATTERBOX_TEMPERATURE` | `0.8` | Generation temperature |
 | **Audio** | | |

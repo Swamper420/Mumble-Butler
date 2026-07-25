@@ -68,7 +68,7 @@ SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", (
 
 SHUTUP_KEYWORDS = os.getenv("SHUTUP_KEYWORDS", "shut up,shutup,be quiet").split(",")
 
-CHATTERBOX_MODEL = os.getenv("CHATTERBOX_MODEL", "turbo") # "turbo", "standard", "multilingual"
+CHATTERBOX_MODEL = os.getenv("CHATTERBOX_MODEL", "nano") # "nano", "turbo", "standard", "multilingual"
 CHATTERBOX_VOICE_DIR = os.getenv("CHATTERBOX_VOICE_DIR", "data/voices")
 CHATTERBOX_DEFAULT_VOICE = os.getenv("CHATTERBOX_DEFAULT_VOICE", "michael")
 CHATTERBOX_TEMPERATURE = float(os.getenv("CHATTERBOX_TEMPERATURE", "0.8"))

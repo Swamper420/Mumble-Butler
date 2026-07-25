@@ -30,6 +30,13 @@ class Voice:
         elif model_type in ["multilingual", "mtl"]:
             from chatterbox.mtl_tts import ChatterboxMultilingualTTS
             self.model = ChatterboxMultilingualTTS.from_pretrained(device=self.device)
+        elif model_type == "nano":
+            from chatterbox.tts_turbo import ChatterboxTurboTTS
+            try:
+                self.model = ChatterboxTurboTTS.from_pretrained(device=self.device, nano=True)
+            except TypeError:
+                print("⚠️ Installed chatterbox-tts does not accept nano=True. Falling back to standard ChatterboxTurboTTS.")
+                self.model = ChatterboxTurboTTS.from_pretrained(device=self.device)
         else:
             from chatterbox.tts_turbo import ChatterboxTurboTTS
             self.model = ChatterboxTurboTTS.from_pretrained(device=self.device)
