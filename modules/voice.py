@@ -132,8 +132,39 @@ class Voice:
             except Exception as e:
                 print(f"⚠️ Failed to download default voice: {e}")
 
+    def sanitize_tts_text(self, text: str) -> str:
+        """Sanitizes and normalizes input text for Chatterbox TTS generation to prevent out-of-range special token errors."""
+        if not text:
+            return ""
+        # 1. Strip surrounding whitespace
+        cleaned = str(text).strip()
+        if not cleaned:
+            return ""
+
+        # 2. Remove control characters and non-printable unicode characters
+        cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned)
+
+        # 3. Check if speakable text exists (excluding bracketed tags like [sigh] or <tag>)
+        speakable = re.sub(r'\[.*?\]', '', cleaned)
+        speakable = re.sub(r'<.*?>', '', speakable).strip()
+
+        if not speakable:
+            return ""
+
+        # 4. Handle extremely short text prompts (e.g. 1-2 chars without punctuation)
+        # Chatterbox flow models can trigger out-of-range special token errors on very short unpunctuated inputs.
+        if len(speakable) <= 3 and not cleaned.endswith(('.', '!', '?', ':', ';', ',')):
+            cleaned = cleaned + "."
+
+        return cleaned
+
     def generate_pcm(self, text: str, voice_id: str = None, model_type: str = None):
         """Generates 48khz PCM bytes from text using Chatterbox."""
+        cleaned_text = self.sanitize_tts_text(text)
+        if not cleaned_text:
+            print("⚠️ TTS Warning: Input text is empty or contains no speakable content after sanitization.")
+            return None
+
         try:
             target_voice = voice_id or self.current_voice_id
             voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
@@ -176,7 +207,7 @@ class Voice:
 
                 # Generate audio using active_model with cached conditionals
                 gen_kwargs = {
-                    "text": text,
+                    "text": cleaned_text,
                     "audio_prompt_path": None,
                     "temperature": getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
                 }
@@ -192,14 +223,14 @@ class Voice:
                 except TypeError as err:
                     if "language_id" in str(err):
                         wav_tensor = active_model.generate(
-                            text,
+                            cleaned_text,
                             language_id=getattr(config, "CHATTERBOX_LANGUAGE", "fi"),
                             audio_prompt_path=None,
                             temperature=getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
                         )
                     else:
                         wav_tensor = active_model.generate(
-                            text,
+                            cleaned_text,
                             audio_prompt_path=None,
                             temperature=getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
                         )
@@ -231,7 +262,83 @@ class Voice:
                 audio_48k = resample_audio(audio_np, sr, 48000)
                 return float_to_pcm(audio_48k)
         except Exception as e:
-            print(f"TTS Error: {e}")
+            err_msg = str(e)
+            print(f"TTS Error: {err_msg}")
+
+            # Autorecovery logic for CUDA device-side assertions / out-of-range token errors
+            is_cuda_assert = any(kw in err_msg.lower() for kw in [
+                "cuda error", "device-side assert", "out-of-range special tokens", "indexselect", "indexing"
+            ])
+
+            if is_cuda_assert:
+                print("🔄 Triggering TTS Autorecovery mechanism due to CUDA/Token assertion failure...")
+                try:
+                    # 1. Evict cached voice conditionals and model instances
+                    self.clear_voice_cache()
+                    target_model_key = (model_type or getattr(config, "CHATTERBOX_MODEL", "nano")).lower()
+                    if target_model_key in self.models:
+                        del self.models[target_model_key]
+
+                    # 2. Attempt CUDA cache cleanup
+                    if torch.cuda.is_available():
+                        try:
+                            torch.cuda.empty_cache()
+                            if hasattr(torch.cuda, "ipc_collect"):
+                                torch.cuda.ipc_collect()
+                        except Exception:
+                            pass
+
+                    # 3. Reload model instance (try GPU first, fallback to CPU if CUDA context is corrupted)
+                    print(f"🔄 Reloading model '{target_model_key}' for recovery...")
+                    try:
+                        recovered_model = self._load_model_instance(target_model_key)
+                    except Exception as reload_err:
+                        print(f"⚠️ Failed GPU reload ({reload_err}), falling back to CPU device...")
+                        self.device = "cpu"
+                        recovered_model = self._load_model_instance(target_model_key)
+
+                    self.models[target_model_key] = recovered_model
+
+                    # 4. Prepare conditionals and retry generation once
+                    print("🔄 Retrying TTS generation with recovered model...")
+                    recovered_model.prepare_conditionals(voice_path)
+
+                    retry_gen_kwargs = {
+                        "text": cleaned_text,
+                        "audio_prompt_path": None,
+                        "temperature": getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
+                    }
+                    if "multilingual" in type(recovered_model).__name__.lower() or hasattr(recovered_model, "languages") or "finnish" in target_model_key:
+                        retry_gen_kwargs["language_id"] = getattr(config, "CHATTERBOX_LANGUAGE", "fi")
+
+                    if "finnish" in target_model_key:
+                        retry_gen_kwargs["repetition_penalty"] = getattr(config, "CHATTERBOX_REPETITION_PENALTY", 1.2)
+                        retry_gen_kwargs["exaggeration"] = getattr(config, "CHATTERBOX_EXAGGERATION", 0.6)
+
+                    with torch.inference_mode():
+                        wav_tensor = recovered_model.generate(**retry_gen_kwargs)
+
+                    sr = getattr(self.model, "sr", 24000)
+                    if torch.is_tensor(wav_tensor) and wav_tensor.numel() > 0:
+                        curr = wav_tensor.detach()
+                        if sr != 48000:
+                            if curr.ndim == 1:
+                                curr = curr.unsqueeze(0).unsqueeze(0)
+                            elif curr.ndim == 2:
+                                curr = curr.unsqueeze(1)
+                            target_len = int(curr.shape[-1] * (48000 / sr))
+                            curr = torch.nn.functional.interpolate(
+                                curr, size=target_len, mode='linear', align_corners=False
+                            ).squeeze()
+                        else:
+                            curr = curr.squeeze()
+
+                        pcm_tensor = (curr * 32767).clamp(-32768, 32767).to(torch.int16)
+                        print("✅ TTS Autorecovery successfully generated PCM audio!")
+                        return pcm_tensor.cpu().numpy().tobytes()
+                except Exception as rec_err:
+                    print(f"❌ TTS Autorecovery retry failed: {rec_err}")
+
             if torch.cuda.is_available():
                 try:
                     torch.cuda.empty_cache()
