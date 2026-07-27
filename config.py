@@ -68,11 +68,20 @@ SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", (
 
 SHUTUP_KEYWORDS = os.getenv("SHUTUP_KEYWORDS", "shut up,shutup,be quiet").split(",")
 
-CHATTERBOX_MODEL = os.getenv("CHATTERBOX_MODEL", "nano") # "nano", "turbo", "standard", "multilingual"
+CHATTERBOX_MODEL = os.getenv("CHATTERBOX_MODEL", "nano") # "nano", "turbo", "standard", "multilingual", "https://huggingface.co/Finnish-NLP/Chatterbox-Finnish"
+CHATTERBOX_API_MODEL = os.getenv("CHATTERBOX_API_MODEL", "https://huggingface.co/Finnish-NLP/Chatterbox-Finnish")
+CHATTERBOX_API_FORMAT = os.getenv("CHATTERBOX_API_FORMAT", "ogg") # "ogg", "wav", "pcm", "json"
 CHATTERBOX_VOICE_DIR = os.getenv("CHATTERBOX_VOICE_DIR", "data/voices")
 CHATTERBOX_DEFAULT_VOICE = os.getenv("CHATTERBOX_DEFAULT_VOICE", "michael")
+
+CHATTERBOX_LANGUAGE = os.getenv("CHATTERBOX_LANGUAGE", "fi")
 CHATTERBOX_TEMPERATURE = float(os.getenv("CHATTERBOX_TEMPERATURE", "0.8"))
+CHATTERBOX_REPETITION_PENALTY = float(os.getenv("CHATTERBOX_REPETITION_PENALTY", "1.2"))
+CHATTERBOX_EXAGGERATION = float(os.getenv("CHATTERBOX_EXAGGERATION", "0.6"))
 CHATTERBOX_VOICE_CACHE_LIMIT = int(os.getenv("CHATTERBOX_VOICE_CACHE_LIMIT", "1"))
+
+
+
 
 
 # --- FAST PRECACHED AUDIO RESPONSES (EXPERIMENTAL) ---

@@ -143,6 +143,31 @@ class TestWebServer(unittest.TestCase):
 
             self.assertFalse(bot.listening_enabled)
 
+            # 6. Test GET /api/tts
+            bot.voice = type("DummyVoice", (), {"generate_pcm": lambda self, text, voice_id=None, model_type=None: b"\x00\x00" * 4800})()
+            req = urllib.request.Request(f"{base_url}/api/tts?text=Hello+world&format=json")
+            with urllib.request.urlopen(req) as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode("utf-8"))
+                self.assertEqual(data["status"], "ok")
+                self.assertEqual(data["text"], "Hello world")
+                self.assertIn("audio_base64", data)
+
+            # 7. Test POST /api/tts returning WAV
+            post_data = urllib.parse.urlencode({"text": "Hei suomi", "format": "wav"}).encode("utf-8")
+            req = urllib.request.Request(f"{base_url}/api/tts", data=post_data, method="POST")
+            with urllib.request.urlopen(req) as resp:
+                self.assertEqual(resp.status, 200)
+                self.assertEqual(resp.headers.get("Content-Type"), "audio/wav")
+                wav_content = resp.read()
+                self.assertTrue(wav_content.startswith(b"RIFF"))
+
+            # 8. Test GET /api/tts default format (Ogg Opus or fallback)
+            req = urllib.request.Request(f"{base_url}/api/tts?text=Terve")
+            with urllib.request.urlopen(req) as resp:
+                self.assertEqual(resp.status, 200)
+                self.assertIn(resp.headers.get("Content-Type"), ["audio/ogg", "audio/wav"])
+
         finally:
             server.stop()
 

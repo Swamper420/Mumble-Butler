@@ -138,10 +138,51 @@ class ConfigManager:
             f.writelines(lines)
 
 
+def pcm_to_wav_bytes(pcm_bytes: bytes, sample_rate: int = 48000, num_channels: int = 1, sample_width: int = 2) -> bytes:
+    import io
+    import wave
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as wav_file:
+        wav_file.setnchannels(num_channels)
+        wav_file.setsampwidth(sample_width)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm_bytes)
+    return buf.getvalue()
+
+
+def pcm_to_ogg_opus_bytes(pcm_bytes: bytes, sample_rate: int = 48000, num_channels: int = 1, bitrate: str = "64k") -> bytes:
+    """Converts raw 16-bit PCM bytes to Ogg Opus audio using ffmpeg."""
+    import subprocess
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-f", "s16le",
+        "-ar", str(sample_rate),
+        "-ac", str(num_channels),
+        "-i", "pipe:0",
+        "-c:a", "libopus",
+        "-b:a", bitrate,
+        "-f", "ogg",
+        "pipe:1"
+    ]
+    try:
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = proc.communicate(input=pcm_bytes)
+        if proc.returncode == 0 and out:
+            return out
+        else:
+            logger.error(f"ffmpeg Opus encoding error: {err.decode('utf-8', errors='ignore')}")
+            return b""
+    except Exception as e:
+        logger.error(f"Failed to execute ffmpeg for Opus encoding: {e}")
+        return b""
+
+
 class WebRequestHandler(BaseHTTPRequestHandler):
-    """HTMX-enabled HTTP Request Handler for Bot Control and Config Panel."""
+    """HTMX-enabled HTTP Request Handler for Bot Control, Config Panel, and TTS API."""
     
     bot_instance = None
+    fallback_voice = None
 
     def log_message(self, format, *args):
         # Silence routine HTTP access logs to keep bot terminal clean
@@ -157,6 +198,9 @@ class WebRequestHandler(BaseHTTPRequestHandler):
             self.serve_status_partial()
         elif path == "/api/config":
             self.serve_config_partial()
+        elif path == "/api/tts":
+            params = parse_qs(parsed_url.query)
+            self.handle_tts_request(params)
         else:
             self.send_error(404, "Not Found")
 
@@ -181,8 +225,115 @@ class WebRequestHandler(BaseHTTPRequestHandler):
             action = params.get("action", [""])[0]
 
             self.handle_bot_action(action)
+        elif path == "/api/tts":
+            content_len = int(self.headers.get("Content-Length", 0))
+            post_body = self.rfile.read(content_len).decode("utf-8")
+            content_type = self.headers.get("Content-Type", "")
+            if "application/json" in content_type:
+                try:
+                    data = json.loads(post_body)
+                    params = {k: [v] for k, v in data.items()}
+                except Exception:
+                    params = parse_qs(post_body)
+            else:
+                params = parse_qs(post_body)
+            self.handle_tts_request(params)
         else:
             self.send_error(404, "Not Found")
+
+    def handle_tts_request(self, params):
+        text_val = params.get("text", [""])[0] if isinstance(params.get("text"), list) else str(params.get("text", ""))
+        text = text_val.strip()
+        if not text:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Missing 'text' parameter"}).encode("utf-8"))
+            return
+
+        voice_id = params.get("voice", [""])[0].strip() if isinstance(params.get("voice"), list) else str(params.get("voice", "")).strip()
+        if not voice_id:
+            voice_id = getattr(config, "CHATTERBOX_DEFAULT_VOICE", "michael")
+
+        model_type = params.get("model", [""])[0].strip() if isinstance(params.get("model"), list) else str(params.get("model", "")).strip()
+        if not model_type:
+            model_type = getattr(config, "CHATTERBOX_API_MODEL", "https://huggingface.co/Finnish-NLP/Chatterbox-Finnish")
+
+        default_fmt = getattr(config, "CHATTERBOX_API_FORMAT", "ogg")
+        output_format = params.get("format", [default_fmt])[0].strip().lower() if isinstance(params.get("format"), list) else str(params.get("format", default_fmt)).strip().lower()
+
+        bot = WebRequestHandler.bot_instance
+        voice_instance = bot.voice if (bot and hasattr(bot, "voice") and bot.voice) else getattr(WebRequestHandler, "fallback_voice", None)
+        if not voice_instance:
+            try:
+                from modules.voice import Voice
+                WebRequestHandler.fallback_voice = Voice()
+                voice_instance = WebRequestHandler.fallback_voice
+            except Exception as e:
+                logger.error(f"Failed to initialize Voice engine for TTS API: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": f"Voice engine initialization error: {e}"}).encode("utf-8"))
+                return
+
+        pcm_bytes = voice_instance.generate_pcm(text, voice_id=voice_id, model_type=model_type)
+        if not pcm_bytes:
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Audio generation failed"}).encode("utf-8"))
+            return
+
+        if output_format in ("ogg", "opus"):
+            ogg_bytes = pcm_to_ogg_opus_bytes(pcm_bytes, sample_rate=48000, num_channels=1)
+            if ogg_bytes:
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/ogg")
+                self.send_header("Content-Length", str(len(ogg_bytes)))
+                self.send_header("Content-Disposition", 'inline; filename="speech.ogg"')
+                self.end_headers()
+                self.wfile.write(ogg_bytes)
+            else:
+                wav_bytes = pcm_to_wav_bytes(pcm_bytes, sample_rate=48000, num_channels=1, sample_width=2)
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/wav")
+                self.send_header("Content-Length", str(len(wav_bytes)))
+                self.end_headers()
+                self.wfile.write(wav_bytes)
+        elif output_format == "pcm":
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/l16;rate=48000;channels=1")
+            self.send_header("Content-Length", str(len(pcm_bytes)))
+            self.end_headers()
+            self.wfile.write(pcm_bytes)
+        elif output_format == "json":
+            import base64
+            b64_audio = base64.b64encode(pcm_bytes).decode("utf-8")
+            ogg_bytes = pcm_to_ogg_opus_bytes(pcm_bytes, sample_rate=48000, num_channels=1)
+            response_data = {
+                "status": "ok",
+                "text": text,
+                "model": model_type,
+                "voice": voice_id,
+                "sample_rate": 48000,
+                "channels": 1,
+                "audio_base64": b64_audio,
+                "format": "pcm"
+            }
+            if ogg_bytes:
+                response_data["ogg_base64"] = base64.b64encode(ogg_bytes).decode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode("utf-8"))
+        else:
+            wav_bytes = pcm_to_wav_bytes(pcm_bytes, sample_rate=48000, num_channels=1, sample_width=2)
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Length", str(len(wav_bytes)))
+            self.end_headers()
+            self.wfile.write(wav_bytes)
 
     def serve_index(self):
         html = f"""<!DOCTYPE html>

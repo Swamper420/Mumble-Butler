@@ -118,9 +118,11 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 | `WAKEWORD_THRESHOLD` | `0.5` | Detection threshold |
 | `ACTIVATION_KEYWORDS` | `obama,opama,opal,opa` | Keyword fallback list |
 | **TTS** | | |
-| `CHATTERBOX_MODEL` | `nano` | Model variant (`nano`, `turbo`, `standard`, `multilingual`) |
+| `CHATTERBOX_MODEL` | `https://huggingface.co/Finnish-NLP/Chatterbox-Finnish` | Model variant (`nano`, `turbo`, `standard`, `multilingual`, `https://huggingface.co/Finnish-NLP/Chatterbox-Finnish`) |
 | `CHATTERBOX_DEFAULT_VOICE` | `michael` | Default voice reference name |
 | `CHATTERBOX_TEMPERATURE` | `0.8` | Generation temperature |
+| `CHATTERBOX_REPETITION_PENALTY` | `1.2` | Repetition penalty (Finnish fine-tune parameter) |
+| `CHATTERBOX_EXAGGERATION` | `0.6` | Exaggeration parameter (Finnish fine-tune parameter) |
 | **Audio** | | |
 | `SILENCE_THRESHOLD` | `0.5` | Silence gap to end clip (seconds) |
 | `MIN_AUDIO_LENGTH` | `0.3` | Minimum clip length (seconds) |
