@@ -232,4 +232,9 @@ class Voice:
                 return float_to_pcm(audio_48k)
         except Exception as e:
             print(f"TTS Error: {e}")
+            if torch.cuda.is_available():
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
             return None
