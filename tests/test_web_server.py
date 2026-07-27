@@ -168,6 +168,22 @@ class TestWebServer(unittest.TestCase):
                 self.assertEqual(resp.status, 200)
                 self.assertIn(resp.headers.get("Content-Type"), ["audio/ogg", "audio/wav"])
 
+            # 9. Test GET /api/tts character limit enforcement (>350 real characters)
+            long_text = "A" * 351
+            req = urllib.request.Request(f"{base_url}/api/tts?text={long_text}")
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                urllib.request.urlopen(req)
+            self.assertEqual(ctx.exception.code, 400)
+            err_data = json.loads(ctx.exception.read().decode("utf-8"))
+            self.assertIn("Text exceeds maximum limit", err_data["error"])
+
+            # 10. Test GET /api/tts with paralinguistic tags (total len > 350, real chars <= 350)
+            tagged_text = "[laugh][gasp]" + ("B" * 340)
+            req = urllib.request.Request(f"{base_url}/api/tts?text={urllib.parse.quote(tagged_text)}&format=json")
+            with urllib.request.urlopen(req) as resp:
+                self.assertEqual(resp.status, 200)
+
+
         finally:
             server.stop()
 

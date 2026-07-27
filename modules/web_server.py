@@ -251,6 +251,20 @@ class WebRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "Missing 'text' parameter"}).encode("utf-8"))
             return
 
+        # Calculate count of "real" characters (excluding paralinguistic [tags] and <tags>)
+        real_text = re.sub(r'\[.*?\]', '', text)
+        real_text = re.sub(r'<.*?>', '', real_text).strip()
+        max_chars = getattr(config, "CHATTERBOX_MAX_CHARS", 350)
+        if len(real_text) > max_chars:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "error": f"Text exceeds maximum limit of {max_chars} real characters for synthesis (got {len(real_text)})"
+            }).encode("utf-8"))
+            return
+
+
         voice_id = params.get("voice", [""])[0].strip() if isinstance(params.get("voice"), list) else str(params.get("voice", "")).strip()
         if not voice_id:
             voice_id = getattr(config, "CHATTERBOX_DEFAULT_VOICE", "michael")
