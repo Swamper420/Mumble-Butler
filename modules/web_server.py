@@ -254,11 +254,11 @@ class WebRequestHandler(BaseHTTPRequestHandler):
         # Calculate count of "real" characters (excluding paralinguistic [tags] and <tags>)
         real_text = re.sub(r'\[.*?\]', '', text)
         real_text = re.sub(r'<.*?>', '', real_text).strip()
-        if not real_text:
+        if len(real_text) < 10:
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"error": "Text contains no speakable content after stripping tags/formatting"}).encode("utf-8"))
+            self.wfile.write(json.dumps({"error": "Text must contain at least 10 speakable characters for synthesis"}).encode("utf-8"))
             return
 
         max_chars = getattr(config, "CHATTERBOX_MAX_CHARS", 350)

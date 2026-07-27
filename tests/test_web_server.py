@@ -154,7 +154,7 @@ class TestWebServer(unittest.TestCase):
                 self.assertIn("audio_base64", data)
 
             # 7. Test POST /api/tts returning WAV
-            post_data = urllib.parse.urlencode({"text": "Hei suomi", "format": "wav"}).encode("utf-8")
+            post_data = urllib.parse.urlencode({"text": "Tervehdys suomi", "format": "wav"}).encode("utf-8")
             req = urllib.request.Request(f"{base_url}/api/tts", data=post_data, method="POST")
             with urllib.request.urlopen(req) as resp:
                 self.assertEqual(resp.status, 200)

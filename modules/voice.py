@@ -133,7 +133,7 @@ class Voice:
                 print(f"⚠️ Failed to download default voice: {e}")
 
     def sanitize_tts_text(self, text: str) -> str:
-        """Sanitizes and normalizes input text for Chatterbox TTS generation to prevent out-of-range special token errors."""
+        """Sanitizes and normalizes input text for Chatterbox TTS generation. Ignores text under 10 speakable characters."""
         if not text:
             return ""
         # 1. Strip surrounding whitespace
@@ -144,17 +144,13 @@ class Voice:
         # 2. Remove control characters and non-printable unicode characters
         cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned)
 
-        # 3. Check if speakable text exists (excluding bracketed tags like [sigh] or <tag>)
+        # 3. Check speakable characters (excluding bracketed tags like [sigh] or <tag>)
         speakable = re.sub(r'\[.*?\]', '', cleaned)
         speakable = re.sub(r'<.*?>', '', speakable).strip()
 
-        if not speakable:
+        # Ignore prompts under 10 speakable characters to prevent Chatterbox flow model CUDA out-of-range token assertions
+        if len(speakable) < 10:
             return ""
-
-        # 4. Handle extremely short text prompts (e.g. 1-2 chars without punctuation)
-        # Chatterbox flow models can trigger out-of-range special token errors on very short unpunctuated inputs.
-        if len(speakable) <= 3 and not cleaned.endswith(('.', '!', '?', ':', ';', ',')):
-            cleaned = cleaned + "."
 
         return cleaned
 
@@ -162,7 +158,7 @@ class Voice:
         """Generates 48khz PCM bytes from text using Chatterbox."""
         cleaned_text = self.sanitize_tts_text(text)
         if not cleaned_text:
-            print("⚠️ TTS Warning: Input text is empty or contains no speakable content after sanitization.")
+            print("⚠️ TTS Warning: Input text is under 10 characters or contains no speakable content after sanitization.")
             return None
 
         try:
@@ -288,15 +284,10 @@ class Voice:
                         except Exception:
                             pass
 
-                    # 3. Reload model instance (try GPU first, fallback to CPU if CUDA context is corrupted)
-                    print(f"🔄 Reloading model '{target_model_key}' for recovery...")
-                    try:
-                        recovered_model = self._load_model_instance(target_model_key)
-                    except Exception as reload_err:
-                        print(f"⚠️ Failed GPU reload ({reload_err}), falling back to CPU device...")
-                        self.device = "cpu"
-                        recovered_model = self._load_model_instance(target_model_key)
-
+                    # 3. Reload model instance on CPU (CUDA context is permanently corrupted in this process after device assert)
+                    print(f"🔄 Switching device to CPU and reloading model '{target_model_key}' for autorecovery...")
+                    self.device = "cpu"
+                    recovered_model = self._load_model_instance(target_model_key)
                     self.models[target_model_key] = recovered_model
 
                     # 4. Prepare conditionals and retry generation once
