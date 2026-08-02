@@ -89,6 +89,16 @@ Custom voice reference WAV files stored in `data/voices/` (e.g. `michael.wav` *d
 
 Mumble Butler includes an HTMX web control dashboard and a simultaneous HTTP TTS API server running on port `8080` (configurable via `WEB_SERVER_PORT`).
 
+### Running the TTS API Separately
+
+You can run the TTS API as a standalone server without launching the full Mumble bot:
+
+```bash
+python tts_api.py --port 8080 --host 0.0.0.0
+```
+
+When started separately, `tts_api.py` automatically pre-loads the API model (`CHATTERBOX_API_MODEL`), readying speech synthesis immediately. It also includes automatic CUDA error recovery — if a CUDA or GPU failure occurs, the engine automatically reloads so the API remains 100% functional.
+
 ### Synthesize Speech (`/api/tts`)
 
 Synthesizes speech on-demand using Chatterbox models (defaults to `https://huggingface.co/Finnish-NLP/Chatterbox-Finnish`).

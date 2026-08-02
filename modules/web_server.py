@@ -288,7 +288,8 @@ class WebRequestHandler(BaseHTTPRequestHandler):
         if not voice_instance:
             try:
                 from modules.voice import Voice
-                WebRequestHandler.fallback_voice = Voice()
+                api_model = getattr(config, "CHATTERBOX_API_MODEL", "https://huggingface.co/Finnish-NLP/Chatterbox-Finnish")
+                WebRequestHandler.fallback_voice = Voice(model_type=api_model)
                 voice_instance = WebRequestHandler.fallback_voice
             except Exception as e:
                 logger.error(f"Failed to initialize Voice engine for TTS API: {e}")
@@ -298,12 +299,33 @@ class WebRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": f"Voice engine initialization error: {e}"}).encode("utf-8"))
                 return
 
-        pcm_bytes = voice_instance.generate_pcm(text, voice_id=voice_id, model_type=model_type)
+        try:
+            pcm_bytes = voice_instance.generate_pcm(text, voice_id=voice_id, model_type=model_type)
+        except Exception as gen_err:
+            logger.error(f"TTS API generation error: {gen_err}")
+            pcm_bytes = None
+
+        if not pcm_bytes:
+            logger.warning("🔄 TTS API generation failed. Attempting automatic Voice engine reload and retry...")
+            try:
+                if hasattr(voice_instance, "reload_engine"):
+                    voice_instance.reload_engine()
+                else:
+                    from modules.voice import Voice
+                    api_model = getattr(config, "CHATTERBOX_API_MODEL", "https://huggingface.co/Finnish-NLP/Chatterbox-Finnish")
+                    WebRequestHandler.fallback_voice = Voice(model_type=api_model)
+                    voice_instance = WebRequestHandler.fallback_voice
+
+                pcm_bytes = voice_instance.generate_pcm(text, voice_id=voice_id, model_type=model_type)
+            except Exception as reload_err:
+                logger.error(f"❌ TTS API automatic reload retry failed: {reload_err}")
+                pcm_bytes = None
+
         if not pcm_bytes:
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"error": "Audio generation failed"}).encode("utf-8"))
+            self.wfile.write(json.dumps({"error": "Audio generation failed after auto-recovery retry"}).encode("utf-8"))
             return
 
         if output_format in ("ogg", "opus"):

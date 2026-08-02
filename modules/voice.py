@@ -7,10 +7,10 @@ import config
 from utils import resample_audio, float_to_pcm
 
 class Voice:
-    def __init__(self):
+    def __init__(self, model_type: str = None):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        model_type = getattr(config, "CHATTERBOX_MODEL", "nano").lower()
-        self.engine = f"chatterbox-{model_type}"
+        self.default_model_type = (model_type or getattr(config, "CHATTERBOX_MODEL", "nano")).lower()
+        self.engine = f"chatterbox-{self.default_model_type}"
         self.conds_cache = {}
         self.models = {}
 
@@ -24,8 +24,8 @@ class Voice:
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
 
-        self.model = self._load_model_instance(model_type)
-        self.models[model_type] = self.model
+        self.model = self._load_model_instance(self.default_model_type)
+        self.models[self.default_model_type] = self.model
         self.current_voice_id = getattr(config, "CHATTERBOX_DEFAULT_VOICE", "michael")
         self._ensure_default_voice()
 
@@ -40,6 +40,38 @@ class Voice:
                 self.conds_cache[self.current_voice_id] = self.model.conds
             except Exception as e:
                 print(f"⚠️ Failed to pre-warm default voice cache: {e}")
+
+    def reload_engine(self, force_device: str = None):
+        """Clears cached models and reloads the default model instance, re-initializing GPU/CUDA context if available."""
+        self.clear_voice_cache()
+        self.models.clear()
+        
+        if force_device:
+            self.device = force_device
+        else:
+            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        print(f"🔄 Reloading Voice engine (device: {self.device}, model: {self.default_model_type})...")
+        try:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
+        self.model = self._load_model_instance(self.default_model_type)
+        self.models[self.default_model_type] = self.model
+
+        # Pre-warm default voice conditionals
+        voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
+        default_path = os.path.join(voice_dir, f"{self.current_voice_id}.wav")
+        if os.path.exists(default_path):
+            try:
+                with torch.inference_mode():
+                    self.model.prepare_conditionals(default_path)
+                self.conds_cache[self.current_voice_id] = self.model.conds
+            except Exception:
+                pass
+        return self.model
 
     def _load_model_instance(self, model_type_str: str):
         model_type = (model_type_str or "nano").lower()
@@ -177,7 +209,7 @@ class Voice:
             if not os.path.exists(voice_path):
                 raise FileNotFoundError(f"Reference voice wav not found at {voice_path}")
 
-            target_model_key = (model_type or getattr(config, "CHATTERBOX_MODEL", "nano")).lower()
+            target_model_key = (model_type or self.default_model_type).lower()
             if target_model_key not in self.models:
                 self.models[target_model_key] = self._load_model_instance(target_model_key)
             active_model = self.models[target_model_key]
@@ -186,7 +218,7 @@ class Voice:
                 cache_key = f"{target_model_key}:{target_voice}"
                 if cache_key in self.conds_cache:
                     active_model.conds = self.conds_cache[cache_key]
-                elif target_voice in self.conds_cache and target_model_key == getattr(config, "CHATTERBOX_MODEL", "nano").lower():
+                elif target_voice in self.conds_cache and target_model_key == self.default_model_type:
                     active_model.conds = self.conds_cache[target_voice]
                 else:
                     # Evict previous voice conditionals if cache limit reached
@@ -261,9 +293,9 @@ class Voice:
             err_msg = str(e)
             print(f"TTS Error: {err_msg}")
 
-            # Autorecovery logic for CUDA device-side assertions / out-of-range token errors
+            # Autorecovery logic for CUDA device-side assertions / out-of-memory / token errors
             is_cuda_assert = any(kw in err_msg.lower() for kw in [
-                "cuda error", "device-side assert", "out-of-range special tokens", "indexselect", "indexing"
+                "cuda error", "device-side assert", "out-of-range special tokens", "indexselect", "indexing", "out of memory", "oom"
             ])
 
             if is_cuda_assert:
@@ -271,7 +303,7 @@ class Voice:
                 try:
                     # 1. Evict cached voice conditionals and model instances
                     self.clear_voice_cache()
-                    target_model_key = (model_type or getattr(config, "CHATTERBOX_MODEL", "nano")).lower()
+                    target_model_key = (model_type or self.default_model_type).lower()
                     if target_model_key in self.models:
                         del self.models[target_model_key]
 
