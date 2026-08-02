@@ -23,7 +23,7 @@ logger = logging.getLogger("TTS_API_Server")
 def main():
     parser = argparse.ArgumentParser(description="Standalone TTS API Server")
     parser.add_argument("--host", type=str, default=getattr(config, "WEB_SERVER_HOST", "0.0.0.0"), help="Host IP to bind (default: 0.0.0.0)")
-    parser.add_argument("--port", type=int, default=getattr(config, "WEB_SERVER_PORT", 8080), help="Port to bind (default: 8080)")
+    parser.add_argument("--port", type=int, default=getattr(config, "API_SERVER_PORT", 8081), help="Port to bind (default: 8081)")
     parser.add_argument("--model", type=str, default=getattr(config, "CHATTERBOX_API_MODEL", "https://huggingface.co/Finnish-NLP/Chatterbox-Finnish"), help="TTS API Model to auto-load")
     args = parser.parse_args()
 

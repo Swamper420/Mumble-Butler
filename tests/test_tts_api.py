@@ -60,5 +60,27 @@ class TestTTSAPIServer(unittest.TestCase):
             server.stop()
             WebRequestHandler.fallback_voice = None
 
+    def test_bot_tts_api_subprocess_lifecycle(self):
+        """Test bot spawning and shutting down isolated TTS API subprocess."""
+        from bot import MadnessBot
+
+        with patch("subprocess.Popen") as mock_popen, patch.object(MadnessBot, "__init__", return_value=None):
+            bot = MadnessBot()
+            bot.logger = MagicMock()
+            bot.tts_api_process = None
+
+            mock_proc = MagicMock()
+            mock_proc.pid = 12345
+            mock_proc.poll.return_value = None
+            mock_popen.return_value = mock_proc
+
+            bot._start_tts_api_process()
+            mock_popen.assert_called_once()
+            self.assertEqual(bot.tts_api_process, mock_proc)
+
+            bot._stop_tts_api_process()
+            mock_proc.terminate.assert_called_once()
+            self.assertIsNone(bot.tts_api_process)
+
 if __name__ == "__main__":
     unittest.main()

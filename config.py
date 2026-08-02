@@ -14,10 +14,12 @@ TARGET_CHANNEL = os.getenv("MUMBLE_TARGET_CHANNEL", "General")
 IGNORED_USERS = os.getenv("MUMBLE_IGNORED_USERS", "YoMusicBot").split(",")
 RECONNECT_DELAY = int(os.getenv("MUMBLE_RECONNECT_DELAY", "5"))
 
-# --- WEB SERVER ---
+# --- WEB SERVER & TTS API ---
 WEB_SERVER_ENABLED = os.getenv("WEB_SERVER_ENABLED", "True").lower() == "true"
 WEB_SERVER_HOST = os.getenv("WEB_SERVER_HOST", "0.0.0.0")
 WEB_SERVER_PORT = int(os.getenv("WEB_SERVER_PORT", "8080"))
+API_SERVER_ENABLED = os.getenv("API_SERVER_ENABLED", "True").lower() == "true"
+API_SERVER_PORT = int(os.getenv("API_SERVER_PORT", "8081"))
 
 
 
