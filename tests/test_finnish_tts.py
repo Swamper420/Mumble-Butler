@@ -11,8 +11,18 @@ class TestFinnishTTS(unittest.TestCase):
         self.assertEqual(config.CHATTERBOX_MODEL, "nano")
         self.assertEqual(config.CHATTERBOX_API_MODEL, "https://huggingface.co/Finnish-NLP/Chatterbox-Finnish")
         self.assertEqual(config.CHATTERBOX_LANGUAGE, "fi")
+        self.assertEqual(config.CHATTERBOX_TEMPERATURE, 0.8)
+        self.assertEqual(config.CHATTERBOX_TOP_P, 0.95)
+        self.assertEqual(config.CHATTERBOX_TOP_K, 50)
         self.assertEqual(config.CHATTERBOX_REPETITION_PENALTY, 1.2)
         self.assertEqual(config.CHATTERBOX_EXAGGERATION, 0.6)
+        self.assertEqual(config.CHATTERBOX_CFG_WEIGHT, 0.5)
+        self.assertEqual(config.CHATTERBOX_PITCH, 1.0)
+        self.assertEqual(config.CHATTERBOX_SPEED, 1.0)
+        self.assertEqual(config.CHATTERBOX_SEED, -1)
+        self.assertEqual(config.CHATTERBOX_VOICE_CACHE_LIMIT, 1)
+        self.assertEqual(config.CHATTERBOX_MAX_CHARS, 350)
+        self.assertEqual(config.CHATTERBOX_MIN_CHARS, 10)
 
     @patch("torch.cuda.is_available", return_value=False)
     @patch("os.path.exists", return_value=True)
@@ -65,9 +75,12 @@ class TestFinnishTTS(unittest.TestCase):
                 text="Terve maailma!",
                 audio_prompt_path=None,
                 temperature=0.8,
-                language_id="fi",
+                top_p=0.95,
+                top_k=50,
                 repetition_penalty=1.2,
-                exaggeration=0.6
+                exaggeration=0.6,
+                cfg_weight=0.5,
+                language_id="fi"
             )
 
 if __name__ == "__main__":

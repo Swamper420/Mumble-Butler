@@ -162,14 +162,25 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 | `WAKEWORD_BUILTIN_MODELS` | `hey_jarvis` | Builtin openWakeWord models |
 | `WAKEWORD_THRESHOLD` | `0.5` | Detection threshold |
 | `ACTIVATION_KEYWORDS` | `obama,opama,opal,opa` | Keyword fallback list |
-| **TTS** | | |
+| **TTS & Voice Fine-Tuning** | | |
 | `CHATTERBOX_MODEL` | `nano` | Main bot model variant (`nano`, `turbo`, `standard`, `multilingual`, `https://huggingface.co/Finnish-NLP/Chatterbox-Finnish`) |
 | `CHATTERBOX_API_MODEL` | `https://huggingface.co/Finnish-NLP/Chatterbox-Finnish` | Secondary model used for HTTP TTS API |
 | `CHATTERBOX_API_FORMAT` | `ogg` | Default API audio output format (`ogg`, `wav`, `pcm`, `json`) |
+| `CHATTERBOX_VOICE_DIR` | `data/voices` | Path to stored voice reference WAV files |
 | `CHATTERBOX_DEFAULT_VOICE` | `michael` | Default voice reference name |
-| `CHATTERBOX_TEMPERATURE` | `0.8` | Generation temperature |
-| `CHATTERBOX_REPETITION_PENALTY` | `1.2` | Repetition penalty (Finnish fine-tune parameter) |
-| `CHATTERBOX_EXAGGERATION` | `0.6` | Exaggeration parameter (Finnish fine-tune parameter) |
+| `CHATTERBOX_LANGUAGE` | `fi` | Target language ISO code (`fi`, `en`, etc.) |
+| `CHATTERBOX_TEMPERATURE` | `0.8` | Generation sampling temperature |
+| `CHATTERBOX_TOP_P` | `0.95` | Nucleus sampling probability threshold |
+| `CHATTERBOX_TOP_K` | `50` | Top-k sampling candidate token limit |
+| `CHATTERBOX_REPETITION_PENALTY` | `1.2` | Repetition penalty factor |
+| `CHATTERBOX_EXAGGERATION` | `0.6` | Emotional expressiveness & vocal exaggeration factor |
+| `CHATTERBOX_CFG_WEIGHT` | `0.5` | Classifier-Free Guidance scale for audio flow matching |
+| `CHATTERBOX_PITCH` | `1.0` | Voice pitch shift factor |
+| `CHATTERBOX_SPEED` | `1.0` | Speech rate multiplier |
+| `CHATTERBOX_SEED` | `-1` | Random seed for deterministic generation (`-1` for random) |
+| `CHATTERBOX_VOICE_CACHE_LIMIT` | `1` | Max cached voice conditionings in VRAM |
+| `CHATTERBOX_MAX_CHARS` | `350` | Max character limit per synthesis request |
+| `CHATTERBOX_MIN_CHARS` | `10` | Minimum speakable characters threshold |
 | **Audio** | | |
 | `SILENCE_THRESHOLD` | `0.5` | Silence gap to end clip (seconds) |
 | `MIN_AUDIO_LENGTH` | `0.3` | Minimum clip length (seconds) |

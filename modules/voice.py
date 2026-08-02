@@ -165,7 +165,7 @@ class Voice:
                 print(f"⚠️ Failed to download default voice: {e}")
 
     def sanitize_tts_text(self, text: str) -> str:
-        """Sanitizes and normalizes input text for Chatterbox TTS generation. Ignores text under 10 speakable characters."""
+        """Sanitizes and normalizes input text for Chatterbox TTS generation. Ignores text under min_chars speakable characters."""
         if not text:
             return ""
         # 1. Strip surrounding whitespace
@@ -180,17 +180,89 @@ class Voice:
         speakable = re.sub(r'\[.*?\]', '', cleaned)
         speakable = re.sub(r'<.*?>', '', speakable).strip()
 
-        # Ignore prompts under 10 speakable characters to prevent Chatterbox flow model CUDA out-of-range token assertions
-        if len(speakable) < 10:
+        # Ignore prompts under CHATTERBOX_MIN_CHARS speakable characters to prevent Chatterbox flow model token assertions
+        min_chars = getattr(config, "CHATTERBOX_MIN_CHARS", 10)
+        if len(speakable) < min_chars:
             return ""
 
         return cleaned
+
+    def _build_gen_kwargs(self, target_model_key: str, active_model, cleaned_text: str) -> dict:
+        """Builds kwargs for Chatterbox model generation using configured fine-tuning parameters."""
+        gen_kwargs = {
+            "text": cleaned_text,
+            "audio_prompt_path": None,
+            "temperature": getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
+        }
+
+        top_p = getattr(config, "CHATTERBOX_TOP_P", 0.95)
+        if top_p is not None and top_p > 0:
+            gen_kwargs["top_p"] = top_p
+
+        top_k = getattr(config, "CHATTERBOX_TOP_K", 50)
+        if top_k is not None and top_k > 0:
+            gen_kwargs["top_k"] = top_k
+
+        rep_pen = getattr(config, "CHATTERBOX_REPETITION_PENALTY", 1.2)
+        if rep_pen is not None:
+            gen_kwargs["repetition_penalty"] = rep_pen
+
+        exag = getattr(config, "CHATTERBOX_EXAGGERATION", 0.6)
+        if exag is not None:
+            gen_kwargs["exaggeration"] = exag
+
+        cfg_w = getattr(config, "CHATTERBOX_CFG_WEIGHT", 0.5)
+        if cfg_w is not None:
+            gen_kwargs["cfg_weight"] = cfg_w
+
+        pitch = getattr(config, "CHATTERBOX_PITCH", 1.0)
+        if pitch is not None and pitch != 1.0:
+            gen_kwargs["pitch"] = pitch
+
+        speed = getattr(config, "CHATTERBOX_SPEED", 1.0)
+        if speed is not None and speed != 1.0:
+            gen_kwargs["speed"] = speed
+
+        seed = getattr(config, "CHATTERBOX_SEED", -1)
+        if seed is not None and seed >= 0:
+            gen_kwargs["seed"] = seed
+
+        if "multilingual" in type(active_model).__name__.lower() or hasattr(active_model, "languages") or "finnish" in target_model_key:
+            gen_kwargs["language_id"] = getattr(config, "CHATTERBOX_LANGUAGE", "fi")
+
+        return gen_kwargs
+
+    def _safe_generate(self, active_model, gen_kwargs: dict):
+        """Safely invokes generate on active_model, pruning unsupported fine-tuning parameters if needed."""
+        try:
+            return active_model.generate(**gen_kwargs)
+        except TypeError as err:
+            err_msg = str(err)
+            kwargs = dict(gen_kwargs)
+            # Remove fine-tuning arguments if unsupported by specific model class
+            for key in list(kwargs.keys()):
+                if key in ("text", "audio_prompt_path"):
+                    continue
+                if key in err_msg or "unexpected keyword" in err_msg or "got an unexpected" in err_msg:
+                    kwargs.pop(key, None)
+            try:
+                return active_model.generate(**kwargs)
+            except TypeError:
+                fallback_kwargs = {
+                    "text": gen_kwargs["text"],
+                    "audio_prompt_path": None,
+                    "temperature": gen_kwargs.get("temperature", 0.8),
+                }
+                if "language_id" in gen_kwargs:
+                    fallback_kwargs["language_id"] = gen_kwargs["language_id"]
+                return active_model.generate(**fallback_kwargs)
 
     def generate_pcm(self, text: str, voice_id: str = None, model_type: str = None):
         """Generates 48khz PCM bytes from text using Chatterbox."""
         cleaned_text = self.sanitize_tts_text(text)
         if not cleaned_text:
-            print("⚠️ TTS Warning: Input text is under 10 characters or contains no speakable content after sanitization.")
+            min_chars = getattr(config, "CHATTERBOX_MIN_CHARS", 10)
+            print(f"⚠️ TTS Warning: Input text is under {min_chars} characters or contains no speakable content after sanitization.")
             return None
 
         try:
@@ -233,35 +305,9 @@ class Voice:
                     active_model.prepare_conditionals(voice_path)
                     self.conds_cache[cache_key] = active_model.conds
 
-                # Generate audio using active_model with cached conditionals
-                gen_kwargs = {
-                    "text": cleaned_text,
-                    "audio_prompt_path": None,
-                    "temperature": getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
-                }
-                if "multilingual" in type(active_model).__name__.lower() or hasattr(active_model, "languages") or "finnish" in target_model_key:
-                    gen_kwargs["language_id"] = getattr(config, "CHATTERBOX_LANGUAGE", "fi")
-
-                if "finnish" in target_model_key:
-                    gen_kwargs["repetition_penalty"] = getattr(config, "CHATTERBOX_REPETITION_PENALTY", 1.2)
-                    gen_kwargs["exaggeration"] = getattr(config, "CHATTERBOX_EXAGGERATION", 0.6)
-
-                try:
-                    wav_tensor = active_model.generate(**gen_kwargs)
-                except TypeError as err:
-                    if "language_id" in str(err):
-                        wav_tensor = active_model.generate(
-                            cleaned_text,
-                            language_id=getattr(config, "CHATTERBOX_LANGUAGE", "fi"),
-                            audio_prompt_path=None,
-                            temperature=getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
-                        )
-                    else:
-                        wav_tensor = active_model.generate(
-                            cleaned_text,
-                            audio_prompt_path=None,
-                            temperature=getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
-                        )
+                # Generate audio using active_model with cached conditionals & fine-tuning kwargs
+                gen_kwargs = self._build_gen_kwargs(target_model_key, active_model, cleaned_text)
+                wav_tensor = self._safe_generate(active_model, gen_kwargs)
 
                 # Resample and convert float32 to PCM int16 directly on GPU tensor if available
                 sr = getattr(self.model, "sr", 24000)
@@ -326,20 +372,9 @@ class Voice:
                     print("🔄 Retrying TTS generation with recovered model...")
                     recovered_model.prepare_conditionals(voice_path)
 
-                    retry_gen_kwargs = {
-                        "text": cleaned_text,
-                        "audio_prompt_path": None,
-                        "temperature": getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
-                    }
-                    if "multilingual" in type(recovered_model).__name__.lower() or hasattr(recovered_model, "languages") or "finnish" in target_model_key:
-                        retry_gen_kwargs["language_id"] = getattr(config, "CHATTERBOX_LANGUAGE", "fi")
-
-                    if "finnish" in target_model_key:
-                        retry_gen_kwargs["repetition_penalty"] = getattr(config, "CHATTERBOX_REPETITION_PENALTY", 1.2)
-                        retry_gen_kwargs["exaggeration"] = getattr(config, "CHATTERBOX_EXAGGERATION", 0.6)
-
+                    retry_gen_kwargs = self._build_gen_kwargs(target_model_key, recovered_model, cleaned_text)
                     with torch.inference_mode():
-                        wav_tensor = recovered_model.generate(**retry_gen_kwargs)
+                        wav_tensor = self._safe_generate(recovered_model, retry_gen_kwargs)
 
                     sr = getattr(self.model, "sr", 24000)
                     if torch.is_tensor(wav_tensor) and wav_tensor.numel() > 0:
