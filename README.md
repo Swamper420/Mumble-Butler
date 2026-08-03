@@ -122,11 +122,15 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 | `WAKEWORD_THRESHOLD` | `0.5` | Detection threshold |
 | `ACTIVATION_KEYWORDS` | `obama,opama,opal,opa` | Keyword fallback list |
 | **TTS & Voice API** | | |
-| `TTS_API_URL` | `http://localhost:8000` | Base URL for external OpenAI-compatible TTS server |
-| `TTS_MODEL` | `omnivoice` | Model name sent in synthesis payload |
+| `TTS_API_URL` | `http://localhost:8000` | Base URL for external TTS server (`POST /api/v1/tts`) |
+| `TTS_MODEL` | `omnivoice` | Model name identifier |
 | `TTS_VOICE` | `mieto_fi` | Default voice identifier |
+| `TTS_LANGUAGE` | `fi` | Target TTS synthesis language |
 | `TTS_SPEED` | `1.0` | Speech playback rate multiplier |
+| `TTS_NUM_STEP` | `32` | Diffusion synthesis step count |
+| `TTS_GUIDANCE_SCALE` | `2.0` | Guidance scale multiplier |
 | `TTS_RESPONSE_FORMAT` | `wav` | Returned audio format |
+| `TTS_SEED` | `42` | Random seed for synthesis reproducible output |
 | `TTS_TIMEOUT` | `30` | Request timeout in seconds |
 | **Audio** | | |
 | `SILENCE_THRESHOLD` | `0.5` | Silence gap to end clip (seconds) |

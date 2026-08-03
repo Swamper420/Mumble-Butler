@@ -11,8 +11,12 @@ class TestFinnishTTS(unittest.TestCase):
         self.assertEqual(config.TTS_API_URL, "http://localhost:8000")
         self.assertEqual(config.TTS_MODEL, "omnivoice")
         self.assertEqual(config.TTS_VOICE, "mieto_fi")
+        self.assertEqual(config.TTS_LANGUAGE, "fi")
         self.assertEqual(config.TTS_SPEED, 1.0)
+        self.assertEqual(config.TTS_NUM_STEP, 32)
+        self.assertEqual(config.TTS_GUIDANCE_SCALE, 2.0)
         self.assertEqual(config.TTS_RESPONSE_FORMAT, "wav")
+        self.assertEqual(config.TTS_SEED, 42)
         self.assertEqual(config.TTS_TIMEOUT, 30)
 
     @patch("requests.post")
@@ -38,13 +42,16 @@ class TestFinnishTTS(unittest.TestCase):
         self.assertEqual(len(pcm), 480 * 2)
 
         mock_post.assert_called_once_with(
-            "http://localhost:8000/v1/audio/speech",
+            "http://localhost:8000/api/v1/tts",
             json={
-                "model": "omnivoice",
-                "input": "Hello world, this is zero-shot voice cloning.",
+                "text": "Hello world, this is zero-shot voice cloning.",
                 "voice": "voice_fi",
+                "language": "fi",
+                "speed": 1.0,
+                "num_step": 32,
+                "guidance_scale": 2.0,
                 "response_format": "wav",
-                "speed": 1.0
+                "seed": 42
             },
             timeout=30
         )

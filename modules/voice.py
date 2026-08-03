@@ -45,21 +45,24 @@ class Voice:
         return cleaned.strip()
 
     def generate_pcm(self, text: str, voice_id: str = None) -> bytes:
-        """Generates 48kHz mono 16-bit PCM bytes from text using OpenAI-compatible /v1/audio/speech API."""
+        """Generates 48kHz mono 16-bit PCM bytes from text using external POST /api/v1/tts API."""
         cleaned_text = self.sanitize_tts_text(text)
         if not cleaned_text:
             return None
 
         target_voice = voice_id or self.current_voice_id
-        endpoint = f"{self.api_url}/v1/audio/speech"
+        endpoint = f"{self.api_url}/api/v1/tts"
         timeout = getattr(config, "TTS_TIMEOUT", 30)
 
         payload = {
-            "model": getattr(config, "TTS_MODEL", "omnivoice"),
-            "input": cleaned_text,
+            "text": cleaned_text,
             "voice": target_voice,
-            "response_format": getattr(config, "TTS_RESPONSE_FORMAT", "wav"),
+            "language": getattr(config, "TTS_LANGUAGE", "fi"),
             "speed": float(getattr(config, "TTS_SPEED", 1.0)),
+            "num_step": int(getattr(config, "TTS_NUM_STEP", 32)),
+            "guidance_scale": float(getattr(config, "TTS_GUIDANCE_SCALE", 2.0)),
+            "response_format": getattr(config, "TTS_RESPONSE_FORMAT", "wav"),
+            "seed": int(getattr(config, "TTS_SEED", 42)),
         }
 
         try:
