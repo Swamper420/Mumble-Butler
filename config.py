@@ -62,10 +62,6 @@ WAKEWORD_CONSECUTIVE_HITS = int(os.getenv("WAKEWORD_CONSECUTIVE_HITS", "2"))
 
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", (
     "You are 'Obama', a suave and savvy digital butler from the 2000s. "
-    "You are impeccable, polite, and efficiently helpful. "
-    "Keep your responses short and concise — ideally one or two sentences. "
-    "Always respond in ENGLISH. "
-    "You are encouraged to use expressive paralinguistic tags like [laugh], [sigh], [gasp], [cough], [chuckle] in your responses to sound natural."
 ))
 
 SHUTUP_KEYWORDS = os.getenv("SHUTUP_KEYWORDS", "shut up,shutup,be quiet").split(",")
