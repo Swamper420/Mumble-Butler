@@ -15,17 +15,18 @@ class Voice:
     def __init__(self, api_url: str = None):
         self.api_url = (api_url or getattr(config, "TTS_API_URL", "http://localhost:8000")).rstrip("/")
         self.engine = "external-tts-api"
-        self._current_voice_id = getattr(config, "TTS_VOICE", "mieto_fi")
+        self._current_voice_id = None
         logger.info(f"🗣️ Initialized Voice module connected to external TTS API at {self.api_url}")
 
     @property
     def current_voice_id(self) -> str:
-        return self._current_voice_id
+        return self._current_voice_id or getattr(config, "TTS_VOICE", "mieto_fi")
 
     @current_voice_id.setter
     def current_voice_id(self, voice_id: str):
         if voice_id:
             self._current_voice_id = voice_id
+            config.TTS_VOICE = voice_id
 
     def reload_engine(self):
         """Reloads/checks connection to external TTS API."""
@@ -144,6 +145,9 @@ class Voice:
                 voice_ids.append(v["voice_id"])
             elif isinstance(v, str):
                 voice_ids.append(v)
+        if self.current_voice_id not in voice_ids:
+            voice_ids.append(self.current_voice_id)
+
         if voice_ids:
             return sorted(list(set(voice_ids)))
 

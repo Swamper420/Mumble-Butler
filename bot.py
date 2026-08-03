@@ -121,17 +121,20 @@ class MadnessBot:
                 self.logger.error(f"⚠️ Chime load error: {e}")
 
     def _get_available_voices(self):
-        """Returns a list of available voice IDs fetched from the external TTS API."""
+        """Returns a list of available voice IDs fetched from the external TTS API, ensuring default_voice is included."""
+        current_voice = getattr(getattr(self, "voice", None), "current_voice_id", None)
+        default_voice = current_voice or getattr(config, "TTS_VOICE", "mieto_fi")
+
         if hasattr(self, "voice") and self.voice:
             try:
                 voices = self.voice.get_available_voices()
                 if isinstance(voices, (list, set, tuple)) and len(voices) > 0:
-                    return sorted(list(set(voices)))
+                    voice_set = set(voices)
+                    voice_set.add(default_voice)
+                    return sorted(list(voice_set))
             except Exception as e:
                 self.logger.warning(f"Error fetching voices from TTS API: {e}")
 
-        current_voice = getattr(getattr(self, "voice", None), "current_voice_id", None)
-        default_voice = current_voice or getattr(config, "TTS_VOICE", "mieto_fi")
         return [default_voice]
 
 
