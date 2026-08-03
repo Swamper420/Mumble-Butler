@@ -30,26 +30,28 @@ class VoiceHandler:
 
     def _detect_activation(self, clean_text):
         """
-        Returns the command content (text after the wake word) if an activation
-        keyword is found, or None if not.
+        Strips the wake word from the beginning of clean_text if present (exact or fuzzy).
+        Because wake word detection is performed at the audio level via the wakeword model,
+        transcripts do not need to explicitly contain the wake word.
 
-        Detection order:
-        1. Exact prefix regex — fastest, zero false positives.
-        2. Fuzzy word scan   — catches STT mistranscriptions (needs rapidfuzz).
+        Returns the cleaned command content (text after the wake word if present,
+        or the full clean_text if no wake word prefix was found).
         """
-        # 1. Exact match
+        if not clean_text:
+            return ""
+
+        # 1. Exact match at prefix
         match = self.activation_pattern.search(clean_text)
         if match:
             return re.sub(self.activation_pattern, "", clean_text, count=1).strip()
 
-        # 2. Fuzzy fallback
+        # 2. Fuzzy fallback at start of phrase
         if _FUZZY_AVAILABLE:
             words = clean_text.split()
-            for i, word in enumerate(words):
-                if any(_fuzz.ratio(word, kw) >= 82 for kw in self.sorted_keywords):
-                    return " ".join(words[i + 1:]).strip()
+            if words and any(_fuzz.ratio(words[0], kw) >= 82 for kw in self.sorted_keywords):
+                return " ".join(words[1:]).strip()
 
-        return None
+        return clean_text
 
     def _has_trigger(self, content, triggers):
         """Returns True if any trigger in triggers matches content as a whole word or phrase."""
@@ -67,9 +69,9 @@ class VoiceHandler:
         """
         clean_text = re.sub(r'[^\w\s]', '', text).lower().strip()
 
-        # 1. Check for Activation Keyword (exact, then fuzzy)
+        # 1. Strip Activation Keyword if present at start
         content = self._detect_activation(clean_text)
-        if content is None:
+        if not content:
             return False
 
         # 2. Check for shut-up keyword before anything else

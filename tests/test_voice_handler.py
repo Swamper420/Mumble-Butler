@@ -35,12 +35,19 @@ class TestShutupKeywordHandling(unittest.TestCase):
         self.assertTrue(bot.listening_enabled)
         bot.stop_speaking.assert_called_once_with()
 
-    def test_no_activation_keyword_no_shutup(self):
+    def test_shutup_without_activation_keyword(self):
         handler, bot = _make_handler()
         result = handler.handle("TestUser", "shut up")
-        self.assertFalse(result)
+        self.assertTrue(result)
         self.assertTrue(bot.listening_enabled)
-        bot.stop_speaking.assert_not_called()
+        bot.stop_speaking.assert_called_once_with()
+
+    def test_command_without_activation_keyword(self):
+        handler, bot = _make_handler()
+        result = handler.handle("TestUser", "hello there")
+        self.assertTrue(result)
+        self.assertTrue(bot.listening_enabled)
+        bot.say_stream.assert_called_once_with("User TestUser says: hello there", user="TestUser")
 
     def test_normal_command_does_not_disable_listening(self):
         handler, bot = _make_handler()
