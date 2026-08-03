@@ -585,26 +585,10 @@ class MadnessBot:
 
     def say_async(self, text, user=None):
         speech_generation = self.speech_generation
-        sentences = CLAUSE_DELIMITERS.split(text)
-        for sentence in sentences:
-            cleaned = sentence.replace("\\n", " ").replace("/n", " ").replace("\\t", " ").replace("/t", " ")
-            cleaned = WHITESPACE_RE.sub(' ', cleaned).strip()
-            if cleaned:
-                self.loop.call_soon_threadsafe(self.queue.put_nowait, (speech_generation, cleaned, user))
-
-    def _extract_phrases(self, buffer_text):
-        """Splits buffer into complete phrases on punctuation or word count limits."""
-        parts = CLAUSE_DELIMITERS.split(buffer_text)
-        if len(parts) > 1:
-            return parts[:-1], parts[-1]
-        
-        words = buffer_text.split()
-        if len(words) >= 6 and buffer_text.endswith(" "):
-            phrase = " ".join(words[:6])
-            remainder = " ".join(words[6:])
-            return [phrase], remainder
-            
-        return [], buffer_text
+        cleaned = text.replace("\\n", " ").replace("/n", " ").replace("\\t", " ").replace("/t", " ")
+        cleaned = WHITESPACE_RE.sub(' ', cleaned).strip()
+        if cleaned:
+            self.loop.call_soon_threadsafe(self.queue.put_nowait, (speech_generation, cleaned, user))
 
     def say_stream(self, prompt, user=None):
         speech_generation = self.speech_generation
@@ -616,7 +600,6 @@ class MadnessBot:
 
     async def _tts_stream_worker(self, speech_generation, prompt, user):
         token_queue = asyncio.Queue()
-        phrase_queue = asyncio.Queue()
         
         # Start LLM stream in executor
         self.loop.run_in_executor(
@@ -627,38 +610,19 @@ class MadnessBot:
             self.loop
         )
 
-        async def _phrase_producer():
-            """Reads tokens from LLM stream and yields phrases to phrase_queue."""
-            buffer = ""
-            while True:
-                token = await token_queue.get()
-                if token is None:
-                    break
-                if speech_generation != self.speech_generation:
-                    break
-                buffer += token
-                phrases, buffer = self._extract_phrases(buffer)
-                for p in phrases:
-                    p_clean = p.strip()
-                    if p_clean:
-                        await phrase_queue.put(p_clean)
-            if speech_generation == self.speech_generation:
-                final_phrase = buffer.strip()
-                if final_phrase:
-                    await phrase_queue.put(final_phrase)
-            await phrase_queue.put(None)
+        full_response = []
+        while True:
+            token = await token_queue.get()
+            if token is None:
+                break
+            if speech_generation != self.speech_generation:
+                break
+            full_response.append(token)
 
-        async def _tts_consumer():
-            """Synthesizes phrases from phrase_queue asynchronously and plays them sequentially."""
-            while True:
-                phrase = await phrase_queue.get()
-                if phrase is None:
-                    break
-                if speech_generation != self.speech_generation:
-                    break
-                await self._generate_and_play_tts(speech_generation, phrase, user)
-
-        await asyncio.gather(_phrase_producer(), _tts_consumer())
+        if speech_generation == self.speech_generation:
+            full_text = "".join(full_response).strip()
+            if full_text:
+                await self._generate_and_play_tts(speech_generation, full_text, user)
 
     async def _generate_and_play_tts(self, speech_generation, sentence, user):
         if self.mumble and self.mumble.sound_output:

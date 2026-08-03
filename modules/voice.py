@@ -1,405 +1,176 @@
-import os
-import torch
-import numpy as np
+import io
 import re
-import urllib.request
+import wave
+import logging
+import subprocess
+import requests
+import numpy as np
+
 import config
-from utils import resample_audio, float_to_pcm
+from utils import resample_int16
+
+logger = logging.getLogger("Voice")
 
 class Voice:
-    def __init__(self, model_type: str = None):
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.default_model_type = (model_type or getattr(config, "CHATTERBOX_MODEL", "nano")).lower()
-        self.engine = f"chatterbox-{self.default_model_type}"
-        self.conds_cache = {}
-        self.models = {}
+    def __init__(self, api_url: str = None):
+        self.api_url = (api_url or getattr(config, "TTS_API_URL", "http://localhost:8000")).rstrip("/")
+        self.engine = "external-tts-api"
+        self._current_voice_id = getattr(config, "TTS_VOICE", "voice_fi")
+        logger.info(f"🗣️ Initialized Voice module connected to external TTS API at {self.api_url}")
 
-        # Optimize PyTorch CPU threading & CUDA matrix flags to relieve CPU bottlenecks
-        cpu_cores = os.cpu_count() or 4
-        if hasattr(torch, "set_num_threads"):
-            torch.set_num_threads(min(cpu_cores, 8))
-        if hasattr(torch, "set_num_interop_threads"):
-            torch.set_num_interop_threads(min(cpu_cores, 4))
-        if torch.cuda.is_available():
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
+    @property
+    def current_voice_id(self) -> str:
+        return self._current_voice_id
 
-        self.model = self._load_model_instance(self.default_model_type)
-        self.models[self.default_model_type] = self.model
-        self.current_voice_id = getattr(config, "CHATTERBOX_DEFAULT_VOICE", "michael")
-        self._ensure_default_voice()
-
-        # Pre-warm default voice
-        voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
-        default_path = os.path.join(voice_dir, f"{self.current_voice_id}.wav")
-        if os.path.exists(default_path):
-            try:
-                print(f"🔥 Pre-warming conditionals cache for default voice: {self.current_voice_id}...")
-                with torch.inference_mode():
-                    self.model.prepare_conditionals(default_path)
-                self.conds_cache[self.current_voice_id] = self.model.conds
-            except Exception as e:
-                print(f"⚠️ Failed to pre-warm default voice cache: {e}")
+    @current_voice_id.setter
+    def current_voice_id(self, voice_id: str):
+        if voice_id:
+            self._current_voice_id = voice_id
 
     def reload_engine(self, force_device: str = None):
-        """Clears cached models and reloads the default model instance, re-initializing GPU/CUDA context if available."""
-        self.clear_voice_cache()
-        self.models.clear()
-        
-        if force_device:
-            self.device = force_device
-        else:
-            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-        print(f"🔄 Reloading Voice engine (device: {self.device}, model: {self.default_model_type})...")
-        try:
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception:
-            pass
-
-        self.model = self._load_model_instance(self.default_model_type)
-        self.models[self.default_model_type] = self.model
-
-        # Pre-warm default voice conditionals
-        voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
-        default_path = os.path.join(voice_dir, f"{self.current_voice_id}.wav")
-        if os.path.exists(default_path):
-            try:
-                with torch.inference_mode():
-                    self.model.prepare_conditionals(default_path)
-                self.conds_cache[self.current_voice_id] = self.model.conds
-            except Exception:
-                pass
-        return self.model
-
-    def _load_model_instance(self, model_type_str: str):
-        model_type = (model_type_str or "nano").lower()
-        print(f"🗣️ Loading Chatterbox ({model_type.upper()}) TTS ({self.device})...")
-        if "finnish" in model_type:
-            try:
-                from chatterbox.mtl_tts import ChatterboxMultilingualTTS
-                model = ChatterboxMultilingualTTS.from_pretrained(device=self.device)
-            except Exception:
-                from chatterbox.tts import ChatterboxTTS
-                model = ChatterboxTTS.from_pretrained(device=self.device)
-
-            repo_id = "Finnish-NLP/Chatterbox-Finnish"
-            filename = "models/best_finnish_multilingual_cp986.safetensors"
-            print(f"📥 Loading finetuned weights from HuggingFace ({repo_id})...")
-            try:
-                from safetensors.torch import load_file
-                from huggingface_hub import hf_hub_download
-
-                local_weights = os.path.join("models", "best_finnish_multilingual_cp986.safetensors")
-                if os.path.exists(local_weights):
-                    weights_path = local_weights
-                else:
-                    weights_path = hf_hub_download(repo_id=repo_id, filename=filename)
-
-                checkpoint_state = load_file(weights_path)
-                t3_state_dict = {k[3:] if k.startswith("t3.") else k: v for k, v in checkpoint_state.items()}
-                if hasattr(model, "t3"):
-                    # Resize text_emb and text_head if vocab size mismatched
-                    if "text_emb.weight" in t3_state_dict and hasattr(model.t3, "text_emb"):
-                        ckpt_vocab_size, ckpt_emb_dim = t3_state_dict["text_emb.weight"].shape
-                        if model.t3.text_emb.weight.shape[0] != ckpt_vocab_size:
-                            print(f"🔄 Resizing T3 text_emb from {model.t3.text_emb.weight.shape[0]} to {ckpt_vocab_size}...")
-                            model.t3.text_emb = torch.nn.Embedding(ckpt_vocab_size, ckpt_emb_dim).to(self.device)
-
-                    if "text_head.weight" in t3_state_dict and hasattr(model.t3, "text_head"):
-                        ckpt_vocab_size, ckpt_in_dim = t3_state_dict["text_head.weight"].shape
-                        if model.t3.text_head.weight.shape[0] != ckpt_vocab_size:
-                            print(f"🔄 Resizing T3 text_head from {model.t3.text_head.weight.shape[0]} to {ckpt_vocab_size}...")
-                            has_bias = getattr(model.t3.text_head, "bias", None) is not None
-                            model.t3.text_head = torch.nn.Linear(ckpt_in_dim, ckpt_vocab_size, bias=has_bias).to(self.device)
-
-                    model.t3.load_state_dict(t3_state_dict, strict=False)
-                    print("✅ Finnish Chatterbox finetuned weights injected successfully.")
-                else:
-                    print("⚠️ Base model does not have t3 attribute. Could not inject finetuned weights.")
-            except Exception as e:
-                print(f"⚠️ Failed to load Finnish-NLP Chatterbox finetuned weights: {e}")
-            return model
-        elif model_type in ["standard", "base", "chatterbox"]:
-            from chatterbox.tts import ChatterboxTTS
-            return ChatterboxTTS.from_pretrained(device=self.device)
-        elif model_type in ["multilingual", "mtl"]:
-            from chatterbox.mtl_tts import ChatterboxMultilingualTTS
-            return ChatterboxMultilingualTTS.from_pretrained(device=self.device)
-        elif model_type == "nano":
-            from chatterbox.tts_turbo import ChatterboxTurboTTS
-            try:
-                return ChatterboxTurboTTS.from_pretrained(device=self.device, nano=True)
-            except TypeError:
-                print("⚠️ Installed chatterbox-tts does not accept nano=True. Falling back to standard ChatterboxTurboTTS.")
-                return ChatterboxTurboTTS.from_pretrained(device=self.device)
-        else:
-            from chatterbox.tts_turbo import ChatterboxTurboTTS
-            return ChatterboxTurboTTS.from_pretrained(device=self.device)
+        """Reloads/checks connection to external TTS API."""
+        logger.info(f"🔄 Re-checking external TTS API connection at {self.api_url}...")
+        self.health_check()
+        return self
 
     def clear_voice_cache(self, keep_voice: str = None):
-        """Clears cached voice conditionals from dictionary and frees GPU VRAM."""
-        if keep_voice:
-            keys_to_del = [k for k in self.conds_cache if k != keep_voice]
-            for k in keys_to_del:
-                del self.conds_cache[k]
-        else:
-            self.conds_cache.clear()
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-    def _ensure_default_voice(self):
-        """Creates the voice directory and downloads a default speech WAV if missing."""
-        voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
-        os.makedirs(voice_dir, exist_ok=True)
-        default_path = os.path.join(voice_dir, f"{self.current_voice_id}.wav")
-        if not os.path.exists(default_path):
-            print(f"📥 Downloading default voice reference to {default_path}...")
-            url = "https://github.com/voxserv/audio_quality_testing_samples/raw/refs/heads/master/testaudio/16000/test01_20s.wav"
-            try:
-                urllib.request.urlretrieve(url, default_path)
-                print("✅ Default voice reference downloaded successfully.")
-            except Exception as e:
-                print(f"⚠️ Failed to download default voice: {e}")
+        """Compatibility no-op for voice cache clearing."""
+        pass
 
     def sanitize_tts_text(self, text: str) -> str:
-        """Sanitizes and normalizes input text for Chatterbox TTS generation. Ignores text under min_chars speakable characters."""
+        """Sanitizes and normalizes input text for TTS generation."""
         if not text:
             return ""
-        # 1. Strip surrounding whitespace
         cleaned = str(text).strip()
         if not cleaned:
             return ""
-
-        # 2. Remove control characters and non-printable unicode characters
+        # Remove control characters and non-printable unicode characters
         cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned)
+        return cleaned.strip()
 
-        # 3. Check speakable characters (excluding bracketed tags like [sigh] or <tag>)
-        speakable = re.sub(r'\[.*?\]', '', cleaned)
-        speakable = re.sub(r'<.*?>', '', speakable).strip()
-
-        # Ignore prompts under CHATTERBOX_MIN_CHARS speakable characters to prevent Chatterbox flow model token assertions
-        min_chars = getattr(config, "CHATTERBOX_MIN_CHARS", 10)
-        if len(speakable) < min_chars:
-            return ""
-
-        return cleaned
-
-    def _build_gen_kwargs(self, target_model_key: str, active_model, cleaned_text: str) -> dict:
-        """Builds kwargs for Chatterbox model generation using configured fine-tuning parameters."""
-        gen_kwargs = {
-            "text": cleaned_text,
-            "audio_prompt_path": None,
-            "temperature": getattr(config, "CHATTERBOX_TEMPERATURE", 0.8),
-        }
-
-        top_p = getattr(config, "CHATTERBOX_TOP_P", 0.95)
-        if top_p is not None and top_p > 0:
-            gen_kwargs["top_p"] = top_p
-
-        top_k = getattr(config, "CHATTERBOX_TOP_K", 50)
-        if top_k is not None and top_k > 0:
-            gen_kwargs["top_k"] = top_k
-
-        rep_pen = getattr(config, "CHATTERBOX_REPETITION_PENALTY", 1.2)
-        if rep_pen is not None:
-            gen_kwargs["repetition_penalty"] = rep_pen
-
-        exag = getattr(config, "CHATTERBOX_EXAGGERATION", 0.6)
-        if exag is not None:
-            gen_kwargs["exaggeration"] = exag
-
-        cfg_w = getattr(config, "CHATTERBOX_CFG_WEIGHT", 0.5)
-        if cfg_w is not None:
-            gen_kwargs["cfg_weight"] = cfg_w
-
-        pitch = getattr(config, "CHATTERBOX_PITCH", 1.0)
-        if pitch is not None and pitch != 1.0:
-            gen_kwargs["pitch"] = pitch
-
-        speed = getattr(config, "CHATTERBOX_SPEED", 1.0)
-        if speed is not None and speed != 1.0:
-            gen_kwargs["speed"] = speed
-
-        seed = getattr(config, "CHATTERBOX_SEED", -1)
-        if seed is not None and seed >= 0:
-            gen_kwargs["seed"] = seed
-
-        if "multilingual" in type(active_model).__name__.lower() or hasattr(active_model, "languages") or "finnish" in target_model_key:
-            gen_kwargs["language_id"] = getattr(config, "CHATTERBOX_LANGUAGE", "fi")
-
-        return gen_kwargs
-
-    def _safe_generate(self, active_model, gen_kwargs: dict):
-        """Safely invokes generate on active_model, pruning unsupported fine-tuning parameters if needed."""
-        try:
-            return active_model.generate(**gen_kwargs)
-        except TypeError as err:
-            err_msg = str(err)
-            kwargs = dict(gen_kwargs)
-            # Remove fine-tuning arguments if unsupported by specific model class
-            for key in list(kwargs.keys()):
-                if key in ("text", "audio_prompt_path"):
-                    continue
-                if key in err_msg or "unexpected keyword" in err_msg or "got an unexpected" in err_msg:
-                    kwargs.pop(key, None)
-            try:
-                return active_model.generate(**kwargs)
-            except TypeError:
-                fallback_kwargs = {
-                    "text": gen_kwargs["text"],
-                    "audio_prompt_path": None,
-                    "temperature": gen_kwargs.get("temperature", 0.8),
-                }
-                if "language_id" in gen_kwargs:
-                    fallback_kwargs["language_id"] = gen_kwargs["language_id"]
-                return active_model.generate(**fallback_kwargs)
-
-    def generate_pcm(self, text: str, voice_id: str = None, model_type: str = None):
-        """Generates 48khz PCM bytes from text using Chatterbox."""
+    def generate_pcm(self, text: str, voice_id: str = None, model_type: str = None) -> bytes:
+        """Generates 48kHz mono 16-bit PCM bytes from text using the external TTS API."""
         cleaned_text = self.sanitize_tts_text(text)
         if not cleaned_text:
-            min_chars = getattr(config, "CHATTERBOX_MIN_CHARS", 10)
-            print(f"⚠️ TTS Warning: Input text is under {min_chars} characters or contains no speakable content after sanitization.")
             return None
+
+        target_voice = voice_id or self.current_voice_id
+        endpoint = f"{self.api_url}/api/v1/tts"
+        fallback_endpoint = f"{self.api_url}/synthesize"
+
+        payload = {
+            "text": cleaned_text,
+            "voice": target_voice,
+            "language": getattr(config, "TTS_LANGUAGE", "fi"),
+            "speed": float(getattr(config, "TTS_SPEED", 1.0)),
+            "num_step": int(getattr(config, "TTS_NUM_STEP", 32)),
+            "guidance_scale": float(getattr(config, "TTS_GUIDANCE_SCALE", 2.0)),
+            "response_format": getattr(config, "TTS_RESPONSE_FORMAT", "wav"),
+            "seed": int(getattr(config, "TTS_SEED", 42)),
+        }
+
+        timeout = getattr(config, "TTS_TIMEOUT", 30)
 
         try:
-            target_voice = voice_id or self.current_voice_id
-            voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
-            voice_path = os.path.join(voice_dir, f"{target_voice}.wav")
+            resp = requests.post(endpoint, json=payload, timeout=timeout)
+            if resp.status_code == 404:
+                resp = requests.post(fallback_endpoint, json=payload, timeout=timeout)
+            
+            resp.raise_for_status()
+            audio_bytes = resp.content
+            if not audio_bytes:
+                return None
 
-            # Check if voice_path exists, fallback if not
-            if not os.path.exists(voice_path):
-                default_voice = getattr(config, "CHATTERBOX_DEFAULT_VOICE", "michael")
-                voice_path = os.path.join(voice_dir, f"{default_voice}.wav")
-                if not os.path.exists(voice_path):
-                    self._ensure_default_voice()
-                target_voice = default_voice
-
-            if not os.path.exists(voice_path):
-                raise FileNotFoundError(f"Reference voice wav not found at {voice_path}")
-
-            target_model_key = (model_type or self.default_model_type).lower()
-            if target_model_key not in self.models:
-                self.models[target_model_key] = self._load_model_instance(target_model_key)
-            active_model = self.models[target_model_key]
-
-            with torch.inference_mode():
-                cache_key = f"{target_model_key}:{target_voice}"
-                if cache_key in self.conds_cache:
-                    active_model.conds = self.conds_cache[cache_key]
-                elif target_voice in self.conds_cache and target_model_key == self.default_model_type:
-                    active_model.conds = self.conds_cache[target_voice]
-                else:
-                    # Evict previous voice conditionals if cache limit reached
-                    max_cache = getattr(config, "CHATTERBOX_VOICE_CACHE_LIMIT", 1)
-                    if max_cache > 0:
-                        while len(self.conds_cache) >= max_cache:
-                            oldest_voice = next(iter(self.conds_cache))
-                            del self.conds_cache[oldest_voice]
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-
-                    active_model.prepare_conditionals(voice_path)
-                    self.conds_cache[cache_key] = active_model.conds
-
-                # Generate audio using active_model with cached conditionals & fine-tuning kwargs
-                gen_kwargs = self._build_gen_kwargs(target_model_key, active_model, cleaned_text)
-                wav_tensor = self._safe_generate(active_model, gen_kwargs)
-
-                # Resample and convert float32 to PCM int16 directly on GPU tensor if available
-                sr = getattr(self.model, "sr", 24000)
-                if torch.is_tensor(wav_tensor) and wav_tensor.numel() > 0:
-                    curr = wav_tensor.detach()
-                    if sr != 48000:
-                        if curr.ndim == 1:
-                            curr = curr.unsqueeze(0).unsqueeze(0)
-                        elif curr.ndim == 2:
-                            curr = curr.unsqueeze(1)
-                        target_len = int(curr.shape[-1] * (48000 / sr))
-                        curr = torch.nn.functional.interpolate(
-                            curr, size=target_len, mode='linear', align_corners=False
-                        ).squeeze()
-                    else:
-                        curr = curr.squeeze()
-
-                    pcm_tensor = (curr * 32767).clamp(-32768, 32767).to(torch.int16)
-                    return pcm_tensor.cpu().numpy().tobytes()
-
-                # Fallback for non-tensor outputs
-                audio_np = wav_tensor.detach().cpu().numpy() if torch.is_tensor(wav_tensor) else wav_tensor
-                if audio_np.ndim > 1:
-                    audio_np = audio_np.squeeze()
-
-                audio_48k = resample_audio(audio_np, sr, 48000)
-                return float_to_pcm(audio_48k)
+            return self._convert_audio_to_pcm48k(audio_bytes)
         except Exception as e:
-            err_msg = str(e)
-            print(f"TTS Error: {err_msg}")
-
-            # Autorecovery logic for CUDA device-side assertions / out-of-memory / token errors
-            is_cuda_assert = any(kw in err_msg.lower() for kw in [
-                "cuda error", "device-side assert", "out-of-range special tokens", "indexselect", "indexing", "out of memory", "oom"
-            ])
-
-            if is_cuda_assert:
-                print("🔄 Triggering TTS Autorecovery mechanism due to CUDA/Token assertion failure...")
-                try:
-                    # 1. Evict cached voice conditionals and model instances
-                    self.clear_voice_cache()
-                    target_model_key = (model_type or self.default_model_type).lower()
-                    if target_model_key in self.models:
-                        del self.models[target_model_key]
-
-                    # 2. Attempt CUDA cache cleanup
-                    if torch.cuda.is_available():
-                        try:
-                            torch.cuda.empty_cache()
-                            if hasattr(torch.cuda, "ipc_collect"):
-                                torch.cuda.ipc_collect()
-                        except Exception:
-                            pass
-
-                    # 3. Reload model instance on CPU (CUDA context is permanently corrupted in this process after device assert)
-                    print(f"🔄 Switching device to CPU and reloading model '{target_model_key}' for autorecovery...")
-                    self.device = "cpu"
-                    recovered_model = self._load_model_instance(target_model_key)
-                    self.models[target_model_key] = recovered_model
-
-                    # 4. Prepare conditionals and retry generation once
-                    print("🔄 Retrying TTS generation with recovered model...")
-                    recovered_model.prepare_conditionals(voice_path)
-
-                    retry_gen_kwargs = self._build_gen_kwargs(target_model_key, recovered_model, cleaned_text)
-                    with torch.inference_mode():
-                        wav_tensor = self._safe_generate(recovered_model, retry_gen_kwargs)
-
-                    sr = getattr(self.model, "sr", 24000)
-                    if torch.is_tensor(wav_tensor) and wav_tensor.numel() > 0:
-                        curr = wav_tensor.detach()
-                        if sr != 48000:
-                            if curr.ndim == 1:
-                                curr = curr.unsqueeze(0).unsqueeze(0)
-                            elif curr.ndim == 2:
-                                curr = curr.unsqueeze(1)
-                            target_len = int(curr.shape[-1] * (48000 / sr))
-                            curr = torch.nn.functional.interpolate(
-                                curr, size=target_len, mode='linear', align_corners=False
-                            ).squeeze()
-                        else:
-                            curr = curr.squeeze()
-
-                        pcm_tensor = (curr * 32767).clamp(-32768, 32767).to(torch.int16)
-                        print("✅ TTS Autorecovery successfully generated PCM audio!")
-                        return pcm_tensor.cpu().numpy().tobytes()
-                except Exception as rec_err:
-                    print(f"❌ TTS Autorecovery retry failed: {rec_err}")
-
-            if torch.cuda.is_available():
-                try:
-                    torch.cuda.empty_cache()
-                except Exception:
-                    pass
+            logger.error(f"TTS API Error generating audio: {e}")
             return None
+
+    def _convert_audio_to_pcm48k(self, audio_bytes: bytes) -> bytes:
+        """Converts binary audio bytes (WAV or format supported via ffmpeg) to 48kHz mono 16-bit PCM bytes."""
+        # Primary attempt: Standard Python wave module (fast and pure Python for WAV)
+        try:
+            with wave.open(io.BytesIO(audio_bytes), 'rb') as wf:
+                sr = wf.getframerate()
+                nchannels = wf.getnchannels()
+                sampwidth = wf.getsampwidth()
+                raw_frames = wf.readframes(wf.getnframes())
+
+                if sampwidth == 2:
+                    audio_data = np.frombuffer(raw_frames, dtype=np.int16)
+                elif sampwidth == 4:
+                    audio_data = (np.frombuffer(raw_frames, dtype=np.int32) >> 16).astype(np.int16)
+                elif sampwidth == 1:
+                    audio_data = ((np.frombuffer(raw_frames, dtype=np.uint8).astype(np.int16) - 128) << 8)
+                else:
+                    raise ValueError(f"Unsupported sample width: {sampwidth}")
+
+                if nchannels > 1:
+                    audio_data = audio_data.reshape(-1, nchannels).mean(axis=1).astype(np.int16)
+
+                if sr != 48000:
+                    audio_data = resample_int16(audio_data, sr, 48000)
+
+                return audio_data.tobytes()
+        except Exception:
+            pass
+
+        # Fallback: ffmpeg process
+        try:
+            proc = subprocess.Popen(
+                ['ffmpeg', '-y', '-i', 'pipe:0', '-f', 's16le', '-ar', '48000', '-ac', '1', 'pipe:1'],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL
+            )
+            out, _ = proc.communicate(input=audio_bytes, timeout=10)
+            if proc.returncode == 0 and out:
+                return out
+        except Exception as e:
+            logger.error(f"FFmpeg conversion fallback failed: {e}")
+
+        return None
+
+    def get_available_voices(self) -> list:
+        """Fetches list of available voices from external API GET /api/v1/voices."""
+        endpoint = f"{self.api_url}/api/v1/voices"
+        timeout = getattr(config, "TTS_TIMEOUT", 10)
+        try:
+            resp = requests.get(endpoint, timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            voices_data = data.get("voices", [])
+            voice_ids = []
+            for v in voices_data:
+                if isinstance(v, dict) and "voice_id" in v:
+                    voice_ids.append(v["voice_id"])
+                elif isinstance(v, str):
+                    voice_ids.append(v)
+            return voice_ids
+        except Exception as e:
+            logger.warning(f"Failed to fetch voices from TTS API ({endpoint}): {e}")
+            return [self.current_voice_id]
+
+    def reload_voices(self) -> bool:
+        """Triggers voice catalog reload on external API POST /api/v1/voices/reload."""
+        endpoint = f"{self.api_url}/api/v1/voices/reload"
+        timeout = getattr(config, "TTS_TIMEOUT", 10)
+        try:
+            resp = requests.post(endpoint, timeout=timeout)
+            resp.raise_for_status()
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to reload voices on TTS API: {e}")
+            return False
+
+    def health_check(self) -> dict:
+        """Queries health status from external API GET /health."""
+        endpoint = f"{self.api_url}/health"
+        timeout = getattr(config, "TTS_TIMEOUT", 5)
+        try:
+            resp = requests.get(endpoint, timeout=timeout)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            logger.warning(f"TTS API health check failed: {e}")
+            return {"status": "error", "error": str(e)}

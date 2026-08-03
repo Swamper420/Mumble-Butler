@@ -1,9 +1,9 @@
 import os
-# pyrefly: ignore [missing-import]
-from dotenv import load_dotenv
-
-# Load environment variables from .env file if it exists
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # --- CONNECTION ---
 SERVER_IP = os.getenv("MUMBLE_SERVER_IP", "127.0.0.1")
@@ -68,24 +68,20 @@ SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", (
 
 SHUTUP_KEYWORDS = os.getenv("SHUTUP_KEYWORDS", "shut up,shutup,be quiet").split(",")
 
-CHATTERBOX_MODEL = os.getenv("CHATTERBOX_MODEL", "nano") # "nano", "turbo", "standard", "multilingual", "https://huggingface.co/Finnish-NLP/Chatterbox-Finnish"
-CHATTERBOX_VOICE_DIR = os.getenv("CHATTERBOX_VOICE_DIR", "data/voices")
-CHATTERBOX_DEFAULT_VOICE = os.getenv("CHATTERBOX_DEFAULT_VOICE", "michael")
+# --- TTS API CONFIG ---
+TTS_API_URL = os.getenv("TTS_API_URL", "http://localhost:8000")
+TTS_VOICE = os.getenv("TTS_VOICE", "voice_fi")
+TTS_LANGUAGE = os.getenv("TTS_LANGUAGE", "fi")
+TTS_SPEED = float(os.getenv("TTS_SPEED", "1.0"))
+TTS_NUM_STEP = int(os.getenv("TTS_NUM_STEP", "32"))
+TTS_GUIDANCE_SCALE = float(os.getenv("TTS_GUIDANCE_SCALE", "2.0"))
+TTS_RESPONSE_FORMAT = os.getenv("TTS_RESPONSE_FORMAT", "wav")
+TTS_SEED = int(os.getenv("TTS_SEED", "42"))
+TTS_TIMEOUT = int(os.getenv("TTS_TIMEOUT", "30"))
 
-# Chatterbox Fine-Tuning & Generation Control Parameters
-CHATTERBOX_LANGUAGE = os.getenv("CHATTERBOX_LANGUAGE", "fi")
-CHATTERBOX_TEMPERATURE = float(os.getenv("CHATTERBOX_TEMPERATURE", "0.8"))
-CHATTERBOX_TOP_P = float(os.getenv("CHATTERBOX_TOP_P", "0.95"))
-CHATTERBOX_TOP_K = int(os.getenv("CHATTERBOX_TOP_K", "50"))
-CHATTERBOX_REPETITION_PENALTY = float(os.getenv("CHATTERBOX_REPETITION_PENALTY", "1.2"))
-CHATTERBOX_EXAGGERATION = float(os.getenv("CHATTERBOX_EXAGGERATION", "0.6"))
-CHATTERBOX_CFG_WEIGHT = float(os.getenv("CHATTERBOX_CFG_WEIGHT", "0.5"))
-CHATTERBOX_PITCH = float(os.getenv("CHATTERBOX_PITCH", "1.0"))
-CHATTERBOX_SPEED = float(os.getenv("CHATTERBOX_SPEED", "1.0"))
-CHATTERBOX_SEED = int(os.getenv("CHATTERBOX_SEED", "-1"))
-CHATTERBOX_VOICE_CACHE_LIMIT = int(os.getenv("CHATTERBOX_VOICE_CACHE_LIMIT", "1"))
-CHATTERBOX_MAX_CHARS = int(os.getenv("CHATTERBOX_MAX_CHARS", "350"))
-CHATTERBOX_MIN_CHARS = int(os.getenv("CHATTERBOX_MIN_CHARS", "10"))
+# Legacy voice directory alias if needed
+CHATTERBOX_VOICE_DIR = os.getenv("CHATTERBOX_VOICE_DIR", "data/voices")
+
 
 
 

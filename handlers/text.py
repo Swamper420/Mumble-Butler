@@ -66,14 +66,10 @@ class TextHandler:
             self.bot.send_chat(f"Context Memory: {state_str}")
 
         elif cmd == config.TEXT_TRIGGERS['VOICE']:
-            import glob
-            voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
-            os.makedirs(voice_dir, exist_ok=True)
-            wav_files = glob.glob(os.path.join(voice_dir, "*.wav"))
-            available_voices = [os.path.splitext(os.path.basename(f))[0] for f in wav_files]
+            available_voices = self.bot.voice.get_available_voices()
 
             if not arg:
-                voices_list = ", ".join(available_voices) if available_voices else "None (drop .wav files in data/voices/)"
+                voices_list = ", ".join(available_voices) if available_voices else "None returned from TTS API"
                 self.bot.send_chat(f"Available voices: {voices_list}")
             else:
                 clean_arg = arg.lower()
@@ -86,7 +82,9 @@ class TextHandler:
                     self.bot.voice.current_voice_id = matched
                     self.bot.send_chat(f"Voice changed to: {matched}")
                 else:
-                    self.bot.send_chat(f"Voice '{arg}' not found. Place a '{arg}.wav' file in {voice_dir} to clone it.")
+                    # Allow setting custom voice string even if not in list
+                    self.bot.voice.current_voice_id = arg
+                    self.bot.send_chat(f"Voice changed to: {arg}")
 
         elif cmd == config.TEXT_TRIGGERS['SAY']:
             if arg:

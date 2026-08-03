@@ -6,6 +6,3 @@ python-dotenv
 rapidfuzz
 openwakeword
 onnxruntime
-chatterbox-tts
-huggingface_hub
-safetensors
