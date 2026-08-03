@@ -1,9 +1,6 @@
 import os
 import time
-import json
 import unittest
-import urllib.request
-import urllib.parse
 import tempfile
 import config
 from modules.web_server import ConfigManager, BotWebServer

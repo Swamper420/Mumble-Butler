@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from modules.recommender import MusicRecommender
-import config
 
 class TestEnhancedRecommender(unittest.TestCase):
     def test_normalize_track_strips_noise(self):

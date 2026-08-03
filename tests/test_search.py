@@ -6,7 +6,6 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from modules.search import WebSearcher
-import config
 
 
 class TestWebSearcher(unittest.TestCase):

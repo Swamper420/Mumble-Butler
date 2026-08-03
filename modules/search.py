@@ -6,9 +6,6 @@ import config
 CLEAN_USER_PREFIX = re.compile(r'^User\s+.*?\s+(says|asks):\s*', re.IGNORECASE)
 CLEAN_WAKEWORD = re.compile(r'^(obama|opama|opal|opa)[,\s]+', re.IGNORECASE)
 CLEAN_SEARCH_VERB = re.compile(r'^(search|google|look up|find info for|find info on)\s+', re.IGNORECASE)
-LINK_PATTERN = re.compile(r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL)
-SNIPPET_PATTERN = re.compile(r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL)
-HTML_TAG_PATTERN = re.compile(r'<[^>]+>')
 
 
 class WebSearcher:

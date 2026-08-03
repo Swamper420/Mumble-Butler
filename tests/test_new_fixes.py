@@ -5,7 +5,6 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import config
 from handlers.text import TextHandler
 from utils import get_resample_indices
 from modules.audio_buffer import UserVoiceStream

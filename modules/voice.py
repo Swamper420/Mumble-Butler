@@ -28,12 +28,6 @@ class Voice:
             self._current_voice_id = voice_id
             config.TTS_VOICE = voice_id
 
-    def reload_engine(self):
-        """Reloads/checks connection to external TTS API."""
-        logger.info(f"🔄 Re-checking external TTS API connection at {self.api_url}...")
-        self.health_check()
-        return self
-
     def sanitize_tts_text(self, text: str) -> str:
         """Sanitizes and normalizes input text for TTS generation."""
         if not text:
@@ -155,20 +149,6 @@ class Voice:
             return sorted(list(set(voice_ids)))
 
         return [self.current_voice_id]
-
-
-    def reload_voices(self) -> bool:
-        """Triggers voice catalog reload on external API POST /api/v1/voices/reload."""
-        endpoint = f"{self.api_url}/api/v1/voices/reload"
-        timeout = getattr(config, "TTS_TIMEOUT", 10)
-        try:
-            resp = requests.post(endpoint, timeout=timeout)
-            if resp.status_code in (200, 201, 204):
-                return True
-        except Exception as e:
-            logger.warning(f"Failed to reload voices on TTS API: {e}")
-
-        return False
 
     def health_check(self) -> dict:
         """Queries health status from external API GET /health."""

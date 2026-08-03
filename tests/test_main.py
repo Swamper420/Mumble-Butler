@@ -1,6 +1,6 @@
 import unittest
 import config
-from utils import get_resample_indices, resample_audio, resample_int16, float_to_pcm, pcm_to_float
+from utils import get_resample_indices, resample_int16
 import numpy as np
 
 class TestMainSmoke(unittest.TestCase):

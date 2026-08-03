@@ -2,7 +2,6 @@ import json
 import re
 import threading
 from datetime import datetime
-import random
 import config
 from modules.recommender import MusicRecommender
 from modules.search import WebSearcher

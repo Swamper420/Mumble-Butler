@@ -31,7 +31,6 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4-e2b")
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "15m")
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "60"))
 OLLAMA_CONNECT_TIMEOUT = int(os.getenv("OLLAMA_CONNECT_TIMEOUT", "3"))
-LLM_PROMPT_FORMAT = os.getenv("LLM_PROMPT_FORMAT", "gemma") # "gemma" or "chatml"
 LLM_DISABLE_THINKING = os.getenv("LLM_DISABLE_THINKING", "True").lower() == "true"
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
 LLM_CONTEXT_SIZE = int(os.getenv("LLM_CONTEXT_SIZE", "2048"))
@@ -141,7 +140,6 @@ MUMBLE_COMMANDS = {
     'REPEAT': "!repeat",
     'MODE': "!mode",
     'NOW_PLAYING': "!np",
-    'NOW_PLAYING_INFO': "!np -v",
     'QUEUE': "!queue",
     'CLEAR': "!clear"
 }
@@ -163,7 +161,6 @@ TEXT_TRIGGERS = {
 
 # --- AUDIO PARAMETERS ---
 SILENCE_THRESHOLD = float(os.getenv("SILENCE_THRESHOLD", "0.5"))
-SILENCE_TRIM_THRESHOLD = float(os.getenv("SILENCE_TRIM_THRESHOLD", "0.001"))
 MIN_AUDIO_LENGTH = float(os.getenv("MIN_AUDIO_LENGTH", "0.3"))
 MAX_AUDIO_BUFFER_SECONDS = float(os.getenv("MAX_AUDIO_BUFFER_SECONDS", "10.0"))
 POLL_RATE = float(os.getenv("POLL_RATE", "0.1"))

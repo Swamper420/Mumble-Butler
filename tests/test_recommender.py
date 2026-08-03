@@ -3,7 +3,6 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from modules.recommender import MusicRecommender
-import config
 
 def test_specific_recommender():
     print("Testing MusicRecommender with Priority Seeds...")

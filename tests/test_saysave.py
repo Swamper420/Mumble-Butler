@@ -2,10 +2,8 @@ import unittest
 from unittest.mock import MagicMock, patch, AsyncMock
 from types import SimpleNamespace
 import asyncio
-import os
 
 from handlers.text import TextHandler
-import config
 
 class _FakeUsers(dict):
     myself_session = 1

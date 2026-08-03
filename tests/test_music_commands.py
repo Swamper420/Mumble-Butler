@@ -1,5 +1,4 @@
 """Tests for botamusique music command forwarding."""
-import importlib.util
 import sys
 import types
 import unittest

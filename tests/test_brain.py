@@ -1,6 +1,4 @@
 """Tests for Brain.generate_response behaviour."""
-import sys
-import types
 import unittest
 from unittest.mock import MagicMock, patch
 

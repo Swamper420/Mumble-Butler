@@ -1,8 +1,7 @@
 """Tests for VoiceHandler shut-up keyword behaviour."""
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import config
 from handlers.voice import VoiceHandler
 
 
