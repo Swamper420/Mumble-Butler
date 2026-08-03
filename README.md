@@ -85,50 +85,9 @@ main.py → MadnessBot (bot.py)
 
 Custom voice reference WAV files stored in `data/voices/` (e.g. `michael.wav` *default*)
 
-## Web Dashboard & TTS API
+## Web Dashboard
 
-Mumble Butler includes an HTMX web control dashboard and a simultaneous HTTP TTS API server running on port `8080` (configurable via `WEB_SERVER_PORT`).
-
-### Running the TTS API Separately
-
-You can run the TTS API as a standalone server without launching the full Mumble bot:
-
-```bash
-python tts_api.py --port 8080 --host 0.0.0.0
-```
-
-When started separately, `tts_api.py` automatically pre-loads the API model (`CHATTERBOX_API_MODEL`), readying speech synthesis immediately. It also includes automatic CUDA error recovery — if a CUDA or GPU failure occurs, the engine automatically reloads so the API remains 100% functional.
-
-### Synthesize Speech (`/api/tts`)
-
-Synthesizes speech on-demand using Chatterbox models (defaults to `https://huggingface.co/Finnish-NLP/Chatterbox-Finnish`).
-
-**HTTP Methods:** `GET` or `POST` (`/api/tts`)
-
-**Parameters:**
-- `text` *(string, required)*: Text string to synthesize.
-- `model` *(string, optional)*: Model engine override (defaults to `CHATTERBOX_API_MODEL`).
-- `voice` *(string, optional)*: Reference voice in `data/voices/` (defaults to `CHATTERBOX_DEFAULT_VOICE`).
-- `format` *(string, optional)*: Output audio format — `"ogg"` / `"opus"` (default, encoded with Opus), `"wav"`, `"pcm"`, or `"json"`.
-
-**Examples:**
-
-```bash
-# 1. Download Ogg Opus speech file (.ogg)
-curl -o speech.ogg "http://localhost:8080/api/tts?text=Terve%20maailma!"
-
-# 2. Download WAV speech file (.wav)
-curl -o speech.wav "http://localhost:8080/api/tts?text=Hello%20world&format=wav"
-
-# 3. POST JSON payload
-curl -X POST http://localhost:8080/api/tts \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Tervehdys kaikille", "format": "ogg"}' \
-  --output speech.ogg
-
-# 4. Receive JSON response with base64 encoded audio
-curl "http://localhost:8080/api/tts?text=Hello&format=json"
-```
+Mumble Butler includes an HTMX web control dashboard running on port `8080` (configurable via `WEB_SERVER_PORT`).
 
 ## Configuration
 
@@ -164,8 +123,6 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 | `ACTIVATION_KEYWORDS` | `obama,opama,opal,opa` | Keyword fallback list |
 | **TTS & Voice Fine-Tuning** | | |
 | `CHATTERBOX_MODEL` | `nano` | Main bot model variant (`nano`, `turbo`, `standard`, `multilingual`, `https://huggingface.co/Finnish-NLP/Chatterbox-Finnish`) |
-| `CHATTERBOX_API_MODEL` | `https://huggingface.co/Finnish-NLP/Chatterbox-Finnish` | Secondary model used for HTTP TTS API |
-| `CHATTERBOX_API_FORMAT` | `ogg` | Default API audio output format (`ogg`, `wav`, `pcm`, `json`) |
 | `CHATTERBOX_VOICE_DIR` | `data/voices` | Path to stored voice reference WAV files |
 | `CHATTERBOX_DEFAULT_VOICE` | `michael` | Default voice reference name |
 | `CHATTERBOX_LANGUAGE` | `fi` | Target language ISO code (`fi`, `en`, etc.) |

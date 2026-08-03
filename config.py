@@ -14,12 +14,10 @@ TARGET_CHANNEL = os.getenv("MUMBLE_TARGET_CHANNEL", "General")
 IGNORED_USERS = os.getenv("MUMBLE_IGNORED_USERS", "YoMusicBot").split(",")
 RECONNECT_DELAY = int(os.getenv("MUMBLE_RECONNECT_DELAY", "5"))
 
-# --- WEB SERVER & TTS API ---
+# --- WEB SERVER ---
 WEB_SERVER_ENABLED = os.getenv("WEB_SERVER_ENABLED", "True").lower() == "true"
 WEB_SERVER_HOST = os.getenv("WEB_SERVER_HOST", "0.0.0.0")
 WEB_SERVER_PORT = int(os.getenv("WEB_SERVER_PORT", "8080"))
-API_SERVER_ENABLED = os.getenv("API_SERVER_ENABLED", "True").lower() == "true"
-API_SERVER_PORT = int(os.getenv("API_SERVER_PORT", "8081"))
 
 
 
@@ -71,8 +69,6 @@ SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", (
 SHUTUP_KEYWORDS = os.getenv("SHUTUP_KEYWORDS", "shut up,shutup,be quiet").split(",")
 
 CHATTERBOX_MODEL = os.getenv("CHATTERBOX_MODEL", "nano") # "nano", "turbo", "standard", "multilingual", "https://huggingface.co/Finnish-NLP/Chatterbox-Finnish"
-CHATTERBOX_API_MODEL = os.getenv("CHATTERBOX_API_MODEL", "https://huggingface.co/Finnish-NLP/Chatterbox-Finnish")
-CHATTERBOX_API_FORMAT = os.getenv("CHATTERBOX_API_FORMAT", "ogg") # "ogg", "wav", "pcm", "json"
 CHATTERBOX_VOICE_DIR = os.getenv("CHATTERBOX_VOICE_DIR", "data/voices")
 CHATTERBOX_DEFAULT_VOICE = os.getenv("CHATTERBOX_DEFAULT_VOICE", "michael")
 

@@ -68,7 +68,6 @@ class MadnessBot:
         self.listening_enabled = True
         self.mumble = None
         self.my_channel_id = None
-        self.tts_api_process = None
         self.running = True
 
         self.start_time = time.time()
@@ -335,39 +334,6 @@ class MadnessBot:
         self.mumble.set_receive_sound(True)
         self.mumble.callbacks.set_callback("sound_received", self.on_sound_received)
 
-    def _start_tts_api_process(self):
-        """Launches the standalone TTS API server as an isolated child process."""
-        if not getattr(config, "API_SERVER_ENABLED", True):
-            self.logger.info("Standalone TTS API server is disabled in config.")
-            return
-
-        api_port = getattr(config, "API_SERVER_PORT", 8081)
-        api_host = getattr(config, "WEB_SERVER_HOST", "0.0.0.0")
-        tts_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tts_api.py")
-
-        self.logger.info(f"🌐 Launching isolated Standalone TTS API server process on http://{api_host}:{api_port}...")
-        try:
-            cmd = [sys.executable, tts_script, "--host", str(api_host), "--port", str(api_port)]
-            self.tts_api_process = subprocess.Popen(cmd)
-            self.logger.info(f"✅ Standalone TTS API server process running (PID: {self.tts_api_process.pid})")
-        except Exception as e:
-            self.logger.error(f"❌ Failed to launch Standalone TTS API server process: {e}")
-
-    def _stop_tts_api_process(self):
-        """Stops the standalone TTS API server child process cleanly."""
-        if self.tts_api_process:
-            self.logger.info("Stopping Standalone TTS API server process...")
-            try:
-                self.tts_api_process.terminate()
-                self.tts_api_process.wait(timeout=3)
-            except Exception:
-                try:
-                    self.tts_api_process.kill()
-                except Exception:
-                    pass
-            self.tts_api_process = None
-            self.logger.info("Standalone TTS API server process stopped.")
-
     def run(self):
         """Main application loop."""
         self.logger.info("🚀 Starting Bot...")
@@ -375,9 +341,6 @@ class MadnessBot:
 
         # Start HTTP Web Interface Server
         self.web_server.start()
-
-        # Start Standalone TTS API Server process
-        self._start_tts_api_process()
 
         # Connection / Reconnection Loop
         while self.running:
@@ -396,12 +359,6 @@ class MadnessBot:
                 while self.running and self.mumble.is_alive():
                     if self.mumble.users.myself:
                         self.my_channel_id = self.mumble.users.myself['channel_id']
-
-                    # Process supervisor: ensure TTS API server remains running
-                    if self.tts_api_process and self.tts_api_process.poll() is not None:
-                        exit_code = self.tts_api_process.returncode
-                        self.logger.warning(f"⚠️ Standalone TTS API process (PID: {self.tts_api_process.pid}) exited with code {exit_code}. Restarting automatically...")
-                        self._start_tts_api_process()
 
                     time.sleep(1)
 
@@ -429,7 +386,6 @@ class MadnessBot:
         self.save_stats()
 
         self.web_server.stop()
-        self._stop_tts_api_process()
 
         if self.mumble:
             self.mumble.stop()

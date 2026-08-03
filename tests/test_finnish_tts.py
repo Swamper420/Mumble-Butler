@@ -9,7 +9,6 @@ import config
 class TestFinnishTTS(unittest.TestCase):
     def test_config_finnish_defaults(self):
         self.assertEqual(config.CHATTERBOX_MODEL, "nano")
-        self.assertEqual(config.CHATTERBOX_API_MODEL, "https://huggingface.co/Finnish-NLP/Chatterbox-Finnish")
         self.assertEqual(config.CHATTERBOX_LANGUAGE, "fi")
         self.assertEqual(config.CHATTERBOX_TEMPERATURE, 0.8)
         self.assertEqual(config.CHATTERBOX_TOP_P, 0.95)
