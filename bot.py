@@ -22,7 +22,6 @@ from modules.ears import Ear
 from modules.voice import Voice
 from modules.audio_manager import AudioManager
 from modules.wakeword import WakewordDetector
-from modules.web_server import BotWebServer
 
 # Logic Handlers
 from handlers.text import TextHandler
@@ -50,7 +49,6 @@ class MadnessBot:
         self.voice = Voice()
         self.audio_manager = AudioManager(self)
         self.wakeword_detector = WakewordDetector()
-        self.web_server = BotWebServer(self)
 
         # Logic Handlers
         self.text_handler = TextHandler(self)
@@ -337,9 +335,6 @@ class MadnessBot:
         self.logger.info("🚀 Starting Bot...")
         threading.Thread(target=self._start_async_loop, daemon=True).start()
 
-        # Start HTTP Web Interface Server
-        self.web_server.start()
-
         # Connection / Reconnection Loop
         while self.running:
             try:
@@ -381,8 +376,6 @@ class MadnessBot:
     def shutdown(self):
         self.logger.info("Shutting down...")
         self.running = False
-
-        self.web_server.stop()
 
         if self.mumble:
             self.mumble.stop()

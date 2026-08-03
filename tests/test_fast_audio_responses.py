@@ -37,8 +37,7 @@ class TestFastAudioResponses(unittest.TestCase):
     @patch("bot.Ear")
     @patch("bot.AudioManager")
     @patch("bot.WakewordDetector")
-    @patch("bot.BotWebServer")
-    def test_precache_on_boot_disabled(self, mock_web, mock_wake, mock_audio, mock_ear, mock_brain, mock_voice_cls):
+    def test_precache_on_boot_disabled(self, mock_wake, mock_audio, mock_ear, mock_brain, mock_voice_cls):
         """When FAST_AUDIO_RESPONSES_ENABLED is False, no PCMs are precached."""
         config.FAST_AUDIO_RESPONSES_ENABLED = False
         bot = MadnessBot()
@@ -51,8 +50,7 @@ class TestFastAudioResponses(unittest.TestCase):
     @patch("bot.Ear")
     @patch("bot.AudioManager")
     @patch("bot.WakewordDetector")
-    @patch("bot.BotWebServer")
-    def test_precache_on_boot_enabled_and_disk_saving(self, mock_web, mock_wake, mock_audio, mock_ear, mock_brain, mock_voice_cls):
+    def test_precache_on_boot_enabled_and_disk_saving(self, mock_wake, mock_audio, mock_ear, mock_brain, mock_voice_cls):
         """When FAST_AUDIO_RESPONSES_ENABLED is True, PCMs are pre-generated and saved to disk."""
         config.FAST_AUDIO_RESPONSES_ENABLED = True
         mock_voice_inst = mock_voice_cls.return_value
@@ -84,8 +82,7 @@ class TestFastAudioResponses(unittest.TestCase):
     @patch("bot.Ear")
     @patch("bot.AudioManager")
     @patch("bot.WakewordDetector")
-    @patch("bot.BotWebServer")
-    def test_precache_disk_loading(self, mock_web, mock_wake, mock_audio, mock_ear, mock_brain, mock_voice_cls):
+    def test_precache_disk_loading(self, mock_wake, mock_audio, mock_ear, mock_brain, mock_voice_cls):
         """On subsequent boot up, PCMs are loaded directly from disk without calling generate_pcm."""
         config.FAST_AUDIO_RESPONSES_ENABLED = True
         mock_voice_inst = mock_voice_cls.return_value

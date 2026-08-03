@@ -85,10 +85,6 @@ main.py → MadnessBot (bot.py)
 
 Custom voice reference WAV files stored in `data/voices/` (e.g. `michael.wav` *default*)
 
-## Web Dashboard
-
-Mumble Butler includes an HTMX web control dashboard running on port `8080` (configurable via `WEB_SERVER_PORT`).
-
 ## Configuration
 
 All settings via `.env` or environment variables. See [config.py](config.py) for defaults.
