@@ -2,6 +2,5 @@ pymumble_py3
 requests
 numpy
 python-dotenv
-rapidfuzz
 openwakeword
 onnxruntime

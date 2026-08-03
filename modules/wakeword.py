@@ -1,6 +1,5 @@
 import numpy as np
 import config
-from utils import pcm_to_float, resample_audio
 
 try:
     from openwakeword.model import Model

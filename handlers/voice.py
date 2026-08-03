@@ -1,10 +1,5 @@
 import re
 import config
-try:
-    from rapidfuzz import fuzz as _fuzz
-    _FUZZY_AVAILABLE = True
-except ImportError:
-    _FUZZY_AVAILABLE = False
 
 
 class VoiceHandler:
@@ -30,7 +25,7 @@ class VoiceHandler:
 
     def _detect_activation(self, clean_text):
         """
-        Strips the wake word from the beginning of clean_text if present (exact or fuzzy).
+        Strips the wake word from the beginning of clean_text if present.
         Because wake word detection is performed at the audio level via the wakeword model,
         transcripts do not need to explicitly contain the wake word.
 
@@ -40,16 +35,9 @@ class VoiceHandler:
         if not clean_text:
             return ""
 
-        # 1. Exact match at prefix
         match = self.activation_pattern.search(clean_text)
         if match:
             return re.sub(self.activation_pattern, "", clean_text, count=1).strip()
-
-        # 2. Fuzzy fallback at start of phrase
-        if _FUZZY_AVAILABLE:
-            words = clean_text.split()
-            if words and any(_fuzz.ratio(words[0], kw) >= 82 for kw in self.sorted_keywords):
-                return " ".join(words[1:]).strip()
 
         return clean_text
 

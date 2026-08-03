@@ -7,7 +7,7 @@ A voice-activated AI butler for Mumble. Listens for a wake word, transcribes spe
 | Category | Details |
 |---|---|
 | 🎙️ **Speech-to-Text** | External REST STT API (`POST /api/v1/transcribe`) serving Whisper / CTranslate2 models (e.g. `RASMUS/whisper-large-v3-turbo-finnish-ct2`) |
-| 🔔 **Wake Word** | [openWakeWord](https://github.com/dscripka/openWakeWord) with real-time streaming detection + keyword fallback with fuzzy matching ([rapidfuzz](https://github.com/rapidfuzz/RapidFuzz)) |
+| 🔔 **Wake Word** | [openWakeWord](https://github.com/dscripka/openWakeWord) with real-time streaming detection |
 | 🧠 **LLM API** | External [Ollama](https://ollama.com) API integration supporting any model with streaming responses |
 | 🗣️ **Text-to-Speech** | OpenAI-compatible TTS API with custom voice selection and sentence-level streaming |
 | 🎵 **Music** | YouTube playback, LLM-seeded recommendations via iTunes API, history-aware deduplication — all via [botamusique](https://github.com/azlux/botamusique) |
@@ -41,7 +41,7 @@ main.py → MadnessBot (bot.py)
 ├── Voice         — External OpenAI-compatible TTS API
 ├── AudioManager  — Voice activity detection & per-user buffering
 ├── WakewordDetector — openWakeWord streaming detection
-├── VoiceHandler  — Voice command routing (fuzzy keyword matching)
+├── VoiceHandler  — Voice command routing
 └── TextHandler   — Text chat command routing
 ```
 
