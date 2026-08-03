@@ -48,65 +48,34 @@ class Voice:
         return cleaned.strip()
 
     def generate_pcm(self, text: str, voice_id: str = None, model_type: str = None) -> bytes:
-        """Generates 48kHz mono 16-bit PCM bytes from text using the external TTS API."""
+        """Generates 48kHz mono 16-bit PCM bytes from text using OpenAI-compatible /v1/audio/speech API."""
         cleaned_text = self.sanitize_tts_text(text)
         if not cleaned_text:
             return None
 
         target_voice = voice_id or self.current_voice_id
-        base_url = self.api_url.rstrip("/")
+        endpoint = f"{self.api_url}/v1/audio/speech"
         timeout = getattr(config, "TTS_TIMEOUT", 30)
 
-        # Payload option 1: Custom API format
-        custom_payload = {
-            "text": cleaned_text,
-            "voice": target_voice,
-            "language": getattr(config, "TTS_LANGUAGE", "fi"),
-            "speed": float(getattr(config, "TTS_SPEED", 1.0)),
-            "num_step": int(getattr(config, "TTS_NUM_STEP", 32)),
-            "guidance_scale": float(getattr(config, "TTS_GUIDANCE_SCALE", 2.0)),
-            "response_format": getattr(config, "TTS_RESPONSE_FORMAT", "wav"),
-            "seed": int(getattr(config, "TTS_SEED", 42)),
-        }
-
-        # Payload option 2: OpenAI Compatible format
-        openai_payload = {
+        payload = {
             "model": getattr(config, "TTS_MODEL", "omnivoice"),
             "input": cleaned_text,
             "voice": target_voice,
-            "response_format": getattr(config, "TTS_RESPONSE_FORMAT", "mp3"),
+            "response_format": getattr(config, "TTS_RESPONSE_FORMAT", "wav"),
             "speed": float(getattr(config, "TTS_SPEED", 1.0)),
         }
 
-        # List of (url, payload) attempts
-        attempts = []
+        try:
+            resp = requests.post(endpoint, json=payload, timeout=timeout)
+            resp.raise_for_status()
+            audio_bytes = resp.content
+            if not audio_bytes:
+                return None
 
-        # If base_url already contains an endpoint path, test it directly first
-        if any(p in base_url for p in ["/api/v1/tts", "/synthesize", "/v1/audio/speech"]):
-            attempts.append((base_url, custom_payload))
-            attempts.append((base_url, openai_payload))
-
-        # Standard endpoints from API spec
-        clean_base = re.sub(r'/(api/v1/tts|synthesize|v1/audio/speech|api/v1/voices|voices)$', '', base_url)
-        attempts.extend([
-            (f"{clean_base}/api/v1/tts", custom_payload),
-            (f"{clean_base}/synthesize", custom_payload),
-            (f"{clean_base}/v1/audio/speech", openai_payload),
-        ])
-
-        last_error = None
-        for url, payload in attempts:
-            try:
-                resp = requests.post(url, json=payload, timeout=timeout)
-                if resp.status_code == 200 and resp.content:
-                    return self._convert_audio_to_pcm48k(resp.content)
-                else:
-                    last_error = f"HTTP {resp.status_code} from {url}"
-            except Exception as e:
-                last_error = str(e)
-
-        logger.error(f"TTS API Error generating audio: {last_error}")
-        return None
+            return self._convert_audio_to_pcm48k(audio_bytes)
+        except Exception as e:
+            logger.error(f"TTS API Error generating audio ({endpoint}): {e}")
+            return None
 
     def _convert_audio_to_pcm48k(self, audio_bytes: bytes) -> bytes:
         """Converts binary audio bytes (WAV or format supported via ffmpeg) to 48kHz mono 16-bit PCM bytes."""
@@ -155,40 +124,31 @@ class Voice:
 
     def get_available_voices(self) -> list:
         """Fetches list of available voices from external API GET /api/v1/voices."""
-        clean_base = re.sub(r'/(api/v1/tts|synthesize|v1/audio/speech|api/v1/voices|voices)$', '', self.api_url.rstrip("/"))
-        endpoints = [
-            f"{clean_base}/api/v1/voices",
-            f"{self.api_url}/voices" if self.api_url != clean_base else f"{clean_base}/voices"
-        ]
+        endpoint = f"{self.api_url}/api/v1/voices"
         timeout = getattr(config, "TTS_TIMEOUT", 10)
+        try:
+            resp = requests.get(endpoint, timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            voices_data = data.get("voices", []) if isinstance(data, dict) else data
+            voice_ids = []
+            if isinstance(voices_data, list):
+                for v in voices_data:
+                    if isinstance(v, dict) and "voice_id" in v:
+                        voice_ids.append(v["voice_id"])
+                    elif isinstance(v, str):
+                        voice_ids.append(v)
+                if voice_ids:
+                    return voice_ids
+        except Exception as e:
+            logger.warning(f"Failed to fetch voices from TTS API ({endpoint}): {e}")
 
-        for ep in endpoints:
-            try:
-                resp = requests.get(ep, timeout=timeout)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    voices_data = data.get("voices", []) if isinstance(data, dict) else data
-                    voice_ids = []
-                    if isinstance(voices_data, list):
-                        for v in voices_data:
-                            if isinstance(v, dict) and "voice_id" in v:
-                                voice_ids.append(v["voice_id"])
-                            elif isinstance(v, str):
-                                voice_ids.append(v)
-                        if voice_ids:
-                            return voice_ids
-            except Exception:
-                continue
-
-        logger.warning(f"Failed to fetch voices from TTS API ({self.api_url})")
         return [self.current_voice_id]
 
     def reload_voices(self) -> bool:
         """Triggers voice catalog reload on external API POST /api/v1/voices/reload."""
-        clean_base = re.sub(r'/(api/v1/tts|synthesize|v1/audio/speech|api/v1/voices|voices)$', '', self.api_url.rstrip("/"))
-        endpoint = f"{clean_base}/api/v1/voices/reload"
+        endpoint = f"{self.api_url}/api/v1/voices/reload"
         timeout = getattr(config, "TTS_TIMEOUT", 10)
-
         try:
             resp = requests.post(endpoint, timeout=timeout)
             if resp.status_code in (200, 201, 204):
@@ -200,10 +160,8 @@ class Voice:
 
     def health_check(self) -> dict:
         """Queries health status from external API GET /health."""
-        clean_base = re.sub(r'/(api/v1/tts|synthesize|v1/audio/speech|api/v1/voices|voices)$', '', self.api_url.rstrip("/"))
-        endpoint = f"{clean_base}/health"
+        endpoint = f"{self.api_url}/health"
         timeout = getattr(config, "TTS_TIMEOUT", 5)
-
         try:
             resp = requests.get(endpoint, timeout=timeout)
             if resp.status_code == 200:

@@ -9,6 +9,8 @@ from modules.voice import Voice
 class TestFinnishTTS(unittest.TestCase):
     def test_config_tts_defaults(self):
         self.assertEqual(config.TTS_API_URL, "http://localhost:8000")
+        self.assertEqual(config.TTS_ENDPOINT, "/v1/audio/speech")
+        self.assertEqual(config.TTS_MODEL, "omnivoice")
         self.assertEqual(config.TTS_VOICE, "voice_fi")
         self.assertEqual(config.TTS_LANGUAGE, "fi")
         self.assertEqual(config.TTS_SPEED, 1.0)
@@ -36,21 +38,18 @@ class TestFinnishTTS(unittest.TestCase):
         voice = Voice(api_url="http://localhost:8000")
         self.assertEqual(voice.engine, "external-tts-api")
 
-        pcm = voice.generate_pcm("Tervehdys! Tämä on ääni-synteesi testi.", voice_id="voice_fi")
+        pcm = voice.generate_pcm("Hello world, this is zero-shot voice cloning.", voice_id="voice_fi")
         self.assertIsNotNone(pcm)
         self.assertEqual(len(pcm), 480 * 2)
 
         mock_post.assert_called_once_with(
-            "http://localhost:8000/api/v1/tts",
+            "http://localhost:8000/v1/audio/speech",
             json={
-                "text": "Tervehdys! Tämä on ääni-synteesi testi.",
+                "model": "omnivoice",
+                "input": "Hello world, this is zero-shot voice cloning.",
                 "voice": "voice_fi",
-                "language": "fi",
-                "speed": 1.0,
-                "num_step": 32,
-                "guidance_scale": 2.0,
                 "response_format": "wav",
-                "seed": 42
+                "speed": 1.0
             },
             timeout=30
         )
@@ -74,7 +73,7 @@ class TestFinnishTTS(unittest.TestCase):
         voice = Voice(api_url="http://localhost:8000")
         voices = voice.get_available_voices()
         self.assertEqual(voices, ["voice_fi"])
-        mock_get.assert_called_once_with("http://localhost:8000/api/v1/voices", timeout=30)
+        mock_get.assert_called_once_with("http://localhost:8000/api/v1/voices", timeout=10)
 
     @patch("requests.get")
     def test_health_check(self, mock_get):
@@ -90,7 +89,7 @@ class TestFinnishTTS(unittest.TestCase):
         voice = Voice(api_url="http://localhost:8000")
         health = voice.health_check()
         self.assertEqual(health["status"], "ok")
-        mock_get.assert_called_once_with("http://localhost:8000/health", timeout=30)
+        mock_get.assert_called_once_with("http://localhost:8000/health", timeout=5)
 
 if __name__ == "__main__":
     unittest.main()

@@ -70,6 +70,8 @@ SHUTUP_KEYWORDS = os.getenv("SHUTUP_KEYWORDS", "shut up,shutup,be quiet").split(
 
 # --- TTS API CONFIG ---
 TTS_API_URL = os.getenv("TTS_API_URL", "http://localhost:8000")
+TTS_ENDPOINT = os.getenv("TTS_ENDPOINT", "/v1/audio/speech")
+TTS_MODEL = os.getenv("TTS_MODEL", "omnivoice")
 TTS_VOICE = os.getenv("TTS_VOICE", "voice_fi")
 TTS_LANGUAGE = os.getenv("TTS_LANGUAGE", "fi")
 TTS_SPEED = float(os.getenv("TTS_SPEED", "1.0"))
