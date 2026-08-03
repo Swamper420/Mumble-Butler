@@ -23,10 +23,10 @@ class ConfigManager:
     CATEGORY_PATTERNS = [
         ("Web Server", ["WEB_SERVER_"]),
         ("Connection & Server", ["SERVER_", "BOT_", "PASSWORD", "TARGET_CHANNEL", "IGNORED_USERS", "RECONNECT_DELAY"]),
-        ("Paths & Files", ["STATS_FILE", "CHIME_FILE", "MUSIC_HISTORY_FILE", "CHATTERBOX_VOICE_DIR"]),
+        ("Paths & Files", ["STATS_FILE", "CHIME_FILE", "MUSIC_HISTORY_FILE"]),
         ("LLM & Ollama", ["OLLAMA_", "LLM_", "WEB_SEARCH_"]),
         ("AI Models & Audio", ["MOONSHINE_", "WAKEWORD_", "SILENCE_THRESHOLD", "MIN_AUDIO_LENGTH", "POLL_RATE"]),
-        ("Voice & TTS", ["ACTIVATION_KEYWORDS", "MEMORY_ENABLED", "SYSTEM_PROMPT", "SHUTUP_KEYWORDS", "TTS_", "CHATTERBOX_", "FAST_AUDIO_", "FAST_WAKEWORD_", "FAST_ACTION_"]),
+        ("Voice & TTS", ["ACTIVATION_KEYWORDS", "MEMORY_ENABLED", "SYSTEM_PROMPT", "SHUTUP_KEYWORDS", "TTS_", "FAST_AUDIO_", "FAST_WAKEWORD_", "FAST_ACTION_"]),
         ("Triggers & Commands", ["VOICE_TRIGGERS", "MUMBLE_COMMANDS", "TEXT_TRIGGERS"]),
         ("Recommender", ["RECOMMENDER_"]),
     ]

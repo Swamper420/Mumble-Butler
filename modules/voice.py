@@ -15,7 +15,7 @@ class Voice:
     def __init__(self, api_url: str = None):
         self.api_url = (api_url or getattr(config, "TTS_API_URL", "http://localhost:8000")).rstrip("/")
         self.engine = "external-tts-api"
-        self._current_voice_id = getattr(config, "TTS_VOICE", "voice_fi")
+        self._current_voice_id = getattr(config, "TTS_VOICE", "mieto_fi")
         logger.info(f"🗣️ Initialized Voice module connected to external TTS API at {self.api_url}")
 
     @property

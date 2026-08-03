@@ -6,7 +6,7 @@ import numpy as np
 class TestMainSmoke(unittest.TestCase):
     def test_config_defaults(self):
         self.assertEqual(config.BOT_USERNAME, "Obama")
-        self.assertTrue(hasattr(config, "CHATTERBOX_DEFAULT_VOICE"))
+        self.assertTrue(hasattr(config, "TTS_VOICE"))
         self.assertFalse(hasattr(config, "KOKORO_VOICE_ID"))
 
     def test_utils_resample_caching(self):

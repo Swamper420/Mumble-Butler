@@ -11,7 +11,7 @@ class TestFinnishTTS(unittest.TestCase):
         self.assertEqual(config.TTS_API_URL, "http://localhost:8000")
         self.assertEqual(config.TTS_ENDPOINT, "/v1/audio/speech")
         self.assertEqual(config.TTS_MODEL, "omnivoice")
-        self.assertEqual(config.TTS_VOICE, "voice_fi")
+        self.assertEqual(config.TTS_VOICE, "mieto_fi")
         self.assertEqual(config.TTS_LANGUAGE, "fi")
         self.assertEqual(config.TTS_SPEED, 1.0)
         self.assertEqual(config.TTS_NUM_STEP, 32)

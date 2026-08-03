@@ -72,7 +72,7 @@ SHUTUP_KEYWORDS = os.getenv("SHUTUP_KEYWORDS", "shut up,shutup,be quiet").split(
 TTS_API_URL = os.getenv("TTS_API_URL", "http://localhost:8000")
 TTS_ENDPOINT = os.getenv("TTS_ENDPOINT", "/v1/audio/speech")
 TTS_MODEL = os.getenv("TTS_MODEL", "omnivoice")
-TTS_VOICE = os.getenv("TTS_VOICE", "voice_fi")
+TTS_VOICE = os.getenv("TTS_VOICE", "mieto_fi")
 TTS_LANGUAGE = os.getenv("TTS_LANGUAGE", "fi")
 TTS_SPEED = float(os.getenv("TTS_SPEED", "1.0"))
 TTS_NUM_STEP = int(os.getenv("TTS_NUM_STEP", "32"))
@@ -80,9 +80,6 @@ TTS_GUIDANCE_SCALE = float(os.getenv("TTS_GUIDANCE_SCALE", "2.0"))
 TTS_RESPONSE_FORMAT = os.getenv("TTS_RESPONSE_FORMAT", "wav")
 TTS_SEED = int(os.getenv("TTS_SEED", "42"))
 TTS_TIMEOUT = int(os.getenv("TTS_TIMEOUT", "30"))
-
-# Legacy voice directory alias if needed
-CHATTERBOX_VOICE_DIR = os.getenv("CHATTERBOX_VOICE_DIR", "data/voices")
 
 
 

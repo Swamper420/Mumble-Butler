@@ -132,7 +132,7 @@ class MadnessBot:
                 self.logger.warning(f"Error fetching voices from TTS API: {e}")
 
         current_voice = getattr(getattr(self, "voice", None), "current_voice_id", None)
-        default_voice = current_voice or getattr(config, "TTS_VOICE", "voice_fi")
+        default_voice = current_voice or getattr(config, "TTS_VOICE", "mieto_fi")
         return [default_voice]
 
 
@@ -254,7 +254,7 @@ class MadnessBot:
 
         sound_to_play = None
         if getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False):
-            current_voice = getattr(self.voice, "current_voice_id", config.CHATTERBOX_DEFAULT_VOICE)
+            current_voice = getattr(self.voice, "current_voice_id", getattr(config, "TTS_VOICE", "mieto_fi"))
             if isinstance(self.precached_wakeword_pcms, dict):
                 voice_wakewords = self.precached_wakeword_pcms.get(current_voice, [])
                 if not voice_wakewords and self.precached_wakeword_pcms:
@@ -285,7 +285,7 @@ class MadnessBot:
         if not getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False):
             return
 
-        current_voice = getattr(self.voice, "current_voice_id", config.CHATTERBOX_DEFAULT_VOICE)
+        current_voice = getattr(self.voice, "current_voice_id", getattr(config, "TTS_VOICE", "mieto_fi"))
         sound_to_play = None
 
         if category == "VOLUME" and level is not None:
