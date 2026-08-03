@@ -76,6 +76,34 @@ class TestFinnishTTS(unittest.TestCase):
         mock_get.assert_called_once_with("http://localhost:8000/api/v1/voices", timeout=10)
 
     @patch("requests.get")
+    def test_get_available_voices_details(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        sample_voice_obj = {
+            "voice_id": "voice_fi",
+            "audio_path": "storage/voices/voice_fi.wav",
+            "has_transcript": True,
+            "transcript": "Tämä on suomenkielinen ääninäyte...",
+            "settings": {
+                "language": "fi",
+                "speed": 1.0,
+                "num_step": 32,
+                "guidance_scale": 2.0
+            }
+        }
+        mock_resp.json.return_value = {
+            "count": 1,
+            "voices": [sample_voice_obj]
+        }
+        mock_get.return_value = mock_resp
+
+        voice = Voice(api_url="http://localhost:8000")
+        details = voice.get_available_voices_details()
+        self.assertEqual(details, [sample_voice_obj])
+        mock_get.assert_called_once_with("http://localhost:8000/api/v1/voices", timeout=10)
+
+
+    @patch("requests.get")
     def test_health_check(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.status_code = 200

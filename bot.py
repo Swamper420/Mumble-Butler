@@ -122,22 +122,19 @@ class MadnessBot:
                 self.logger.error(f"⚠️ Chime load error: {e}")
 
     def _get_available_voices(self):
-        """Returns a list of available voice IDs."""
-        voice_dir = getattr(config, "CHATTERBOX_VOICE_DIR", "data/voices")
-        voices = set()
-        default_voice = getattr(config, "CHATTERBOX_DEFAULT_VOICE", "michael")
-        voices.add(default_voice)
+        """Returns a list of available voice IDs fetched from the external TTS API."""
+        if hasattr(self, "voice") and self.voice:
+            try:
+                voices = self.voice.get_available_voices()
+                if isinstance(voices, (list, set, tuple)) and len(voices) > 0:
+                    return sorted(list(set(voices)))
+            except Exception as e:
+                self.logger.warning(f"Error fetching voices from TTS API: {e}")
+
         current_voice = getattr(getattr(self, "voice", None), "current_voice_id", None)
-        if current_voice:
-            voices.add(current_voice)
+        default_voice = current_voice or getattr(config, "TTS_VOICE", "voice_fi")
+        return [default_voice]
 
-        if os.path.exists(voice_dir):
-            for f in os.listdir(voice_dir):
-                if f.endswith(".wav"):
-                    voice_id = os.path.splitext(f)[0]
-                    voices.add(voice_id)
-
-        return sorted(list(voices))
 
     def _precache_fast_audio_responses(self):
         """Generates or loads precached fast audio responses (wakewords, action confirmations, volume numbers) for all available voices."""

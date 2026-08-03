@@ -57,6 +57,7 @@ class TestFastAudioResponses(unittest.TestCase):
         config.FAST_AUDIO_RESPONSES_ENABLED = True
         mock_voice_inst = mock_voice_cls.return_value
         mock_voice_inst.current_voice_id = "michael"
+        mock_voice_inst.get_available_voices.return_value = ["michael"]
         mock_voice_inst.generate_pcm.side_effect = lambda text, voice_id=None: f"pcm_{voice_id}_{text}".encode("utf-8")
 
         bot = MadnessBot()
@@ -89,6 +90,7 @@ class TestFastAudioResponses(unittest.TestCase):
         config.FAST_AUDIO_RESPONSES_ENABLED = True
         mock_voice_inst = mock_voice_cls.return_value
         mock_voice_inst.current_voice_id = "michael"
+        mock_voice_inst.get_available_voices.return_value = ["michael"]
         mock_voice_inst.generate_pcm.side_effect = lambda text, voice_id=None: f"pcm_{voice_id}_{text}".encode("utf-8")
 
         # 1st boot: generates and saves to disk

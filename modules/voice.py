@@ -122,28 +122,37 @@ class Voice:
 
         return None
 
-    def get_available_voices(self) -> list:
-        """Fetches list of available voices from external API GET /api/v1/voices."""
+    def get_available_voices_details(self) -> list:
+        """Fetches detailed list of available voices from external API GET /api/v1/voices."""
         endpoint = f"{self.api_url}/api/v1/voices"
         timeout = getattr(config, "TTS_TIMEOUT", 10)
         try:
             resp = requests.get(endpoint, timeout=timeout)
             resp.raise_for_status()
             data = resp.json()
-            voices_data = data.get("voices", []) if isinstance(data, dict) else data
-            voice_ids = []
-            if isinstance(voices_data, list):
-                for v in voices_data:
-                    if isinstance(v, dict) and "voice_id" in v:
-                        voice_ids.append(v["voice_id"])
-                    elif isinstance(v, str):
-                        voice_ids.append(v)
-                if voice_ids:
-                    return voice_ids
+            if isinstance(data, dict) and "voices" in data:
+                return data.get("voices", [])
+            elif isinstance(data, list):
+                return data
         except Exception as e:
-            logger.warning(f"Failed to fetch voices from TTS API ({endpoint}): {e}")
+            logger.warning(f"Failed to fetch voice details from TTS API ({endpoint}): {e}")
+
+        return []
+
+    def get_available_voices(self) -> list:
+        """Fetches list of available voice IDs from external API GET /api/v1/voices."""
+        voices_details = self.get_available_voices_details()
+        voice_ids = []
+        for v in voices_details:
+            if isinstance(v, dict) and "voice_id" in v:
+                voice_ids.append(v["voice_id"])
+            elif isinstance(v, str):
+                voice_ids.append(v)
+        if voice_ids:
+            return sorted(list(set(voice_ids)))
 
         return [self.current_voice_id]
+
 
     def reload_voices(self) -> bool:
         """Triggers voice catalog reload on external API POST /api/v1/voices/reload."""
