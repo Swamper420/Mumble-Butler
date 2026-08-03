@@ -27,15 +27,11 @@ class Voice:
         if voice_id:
             self._current_voice_id = voice_id
 
-    def reload_engine(self, force_device: str = None):
+    def reload_engine(self):
         """Reloads/checks connection to external TTS API."""
         logger.info(f"🔄 Re-checking external TTS API connection at {self.api_url}...")
         self.health_check()
         return self
-
-    def clear_voice_cache(self, keep_voice: str = None):
-        """Compatibility no-op for voice cache clearing."""
-        pass
 
     def sanitize_tts_text(self, text: str) -> str:
         """Sanitizes and normalizes input text for TTS generation."""
@@ -47,7 +43,7 @@ class Voice:
         cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned)
         return cleaned.strip()
 
-    def generate_pcm(self, text: str, voice_id: str = None, model_type: str = None) -> bytes:
+    def generate_pcm(self, text: str, voice_id: str = None) -> bytes:
         """Generates 48kHz mono 16-bit PCM bytes from text using OpenAI-compatible /v1/audio/speech API."""
         cleaned_text = self.sanitize_tts_text(text)
         if not cleaned_text:

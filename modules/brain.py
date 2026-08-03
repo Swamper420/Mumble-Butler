@@ -53,32 +53,7 @@ class Brain:
                 self.history = []
             return self.memory_enabled
 
-    def _get_tags(self):
-        fmt = getattr(config, 'LLM_PROMPT_FORMAT', 'chatml').lower()
-        model_setting = getattr(config, 'OLLAMA_MODEL', '').lower()
-        if fmt == 'gemma' and 'qwen' in model_setting:
-            fmt = 'chatml'
 
-        if fmt == 'gemma':
-            return {
-                'system_start': '<start_of_turn>system\n',
-                'system_end': '<end_of_turn>\n',
-                'user_start': '<start_of_turn>user\n',
-                'user_end': '<end_of_turn>\n',
-                'assistant_start': '<start_of_turn>model\n',
-                'assistant_end': '<end_of_turn>\n',
-                'stop': ['<end_of_turn>', '<start_of_turn>']
-            }
-        else: # default to chatml
-            return {
-                'system_start': '<|im_start|>system\n',
-                'system_end': '<|im_end|>\n',
-                'user_start': '<|im_start|>user\n',
-                'user_end': '<|im_end|>\n',
-                'assistant_start': '<|im_start|>assistant\n',
-                'assistant_end': '<|im_end|>\n',
-                'stop': ['<|im_end|>', '<|im_start|>']
-            }
 
     def _strip_thinking(self, text: str) -> str:
         """Remove <think>...</think> blocks from LLM output."""

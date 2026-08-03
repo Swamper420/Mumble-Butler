@@ -104,11 +104,7 @@ class AudioManager:
             
             self.bot.play_ack_sound()
 
-    def prune_streams(self):
-        """Optional: Remove old/empty streams to save memory."""
-        with self.lock:
-            # Simple cleanup logic could go here if needed
-            pass
+
 
     def get_processable_audio(self):
         """

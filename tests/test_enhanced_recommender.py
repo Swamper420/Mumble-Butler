@@ -112,20 +112,5 @@ class TestEnhancedRecommender(unittest.TestCase):
                 song = brain.recommend_song("play some Queen vibe")
                 self.assertEqual(song, "Queen - Under Pressure")
 
-    def test_get_tags_dynamic(self):
-        from modules.brain import Brain
-        with patch('modules.brain.LLM_AVAILABLE', False):
-            brain = Brain()
-            
-            with patch('config.LLM_PROMPT_FORMAT', 'gemma'):
-                tags = brain._get_tags()
-                self.assertEqual(tags['system_start'], '<start_of_turn>system\n')
-                self.assertEqual(tags['assistant_start'], '<start_of_turn>model\n')
-                
-            with patch('config.LLM_PROMPT_FORMAT', 'chatml'):
-                tags = brain._get_tags()
-                self.assertEqual(tags['system_start'], '<|im_start|>system\n')
-                self.assertEqual(tags['assistant_start'], '<|im_start|>assistant\n')
-
 if __name__ == '__main__':
     unittest.main()

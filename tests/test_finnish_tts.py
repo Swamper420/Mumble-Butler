@@ -9,15 +9,10 @@ from modules.voice import Voice
 class TestFinnishTTS(unittest.TestCase):
     def test_config_tts_defaults(self):
         self.assertEqual(config.TTS_API_URL, "http://localhost:8000")
-        self.assertEqual(config.TTS_ENDPOINT, "/v1/audio/speech")
         self.assertEqual(config.TTS_MODEL, "omnivoice")
         self.assertEqual(config.TTS_VOICE, "mieto_fi")
-        self.assertEqual(config.TTS_LANGUAGE, "fi")
         self.assertEqual(config.TTS_SPEED, 1.0)
-        self.assertEqual(config.TTS_NUM_STEP, 32)
-        self.assertEqual(config.TTS_GUIDANCE_SCALE, 2.0)
         self.assertEqual(config.TTS_RESPONSE_FORMAT, "wav")
-        self.assertEqual(config.TTS_SEED, 42)
         self.assertEqual(config.TTS_TIMEOUT, 30)
 
     @patch("requests.post")

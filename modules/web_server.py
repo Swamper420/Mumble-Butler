@@ -23,7 +23,7 @@ class ConfigManager:
     CATEGORY_PATTERNS = [
         ("Web Server", ["WEB_SERVER_"]),
         ("Connection & Server", ["SERVER_", "BOT_", "PASSWORD", "TARGET_CHANNEL", "IGNORED_USERS", "RECONNECT_DELAY"]),
-        ("Paths & Files", ["STATS_FILE", "CHIME_FILE", "MUSIC_HISTORY_FILE"]),
+        ("Paths & Files", ["CHIME_FILE", "MUSIC_HISTORY_FILE"]),
         ("LLM & Ollama", ["OLLAMA_", "LLM_", "WEB_SEARCH_"]),
         ("AI Models & Audio", ["MOONSHINE_", "WAKEWORD_", "SILENCE_THRESHOLD", "MIN_AUDIO_LENGTH", "POLL_RATE"]),
         ("Voice & TTS", ["ACTIVATION_KEYWORDS", "MEMORY_ENABLED", "SYSTEM_PROMPT", "SHUTUP_KEYWORDS", "TTS_", "FAST_AUDIO_", "FAST_WAKEWORD_", "FAST_ACTION_"]),
@@ -138,44 +138,7 @@ class ConfigManager:
             f.writelines(lines)
 
 
-def pcm_to_wav_bytes(pcm_bytes: bytes, sample_rate: int = 48000, num_channels: int = 1, sample_width: int = 2) -> bytes:
-    import io
-    import wave
-    buf = io.BytesIO()
-    with wave.open(buf, 'wb') as wav_file:
-        wav_file.setnchannels(num_channels)
-        wav_file.setsampwidth(sample_width)
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(pcm_bytes)
-    return buf.getvalue()
 
-
-def pcm_to_ogg_opus_bytes(pcm_bytes: bytes, sample_rate: int = 48000, num_channels: int = 1, bitrate: str = "64k") -> bytes:
-    """Converts raw 16-bit PCM bytes to Ogg Opus audio using ffmpeg."""
-    import subprocess
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-f", "s16le",
-        "-ar", str(sample_rate),
-        "-ac", str(num_channels),
-        "-i", "pipe:0",
-        "-c:a", "libopus",
-        "-b:a", bitrate,
-        "-f", "ogg",
-        "pipe:1"
-    ]
-    try:
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        out, err = proc.communicate(input=pcm_bytes)
-        if proc.returncode == 0 and out:
-            return out
-        else:
-            logger.error(f"ffmpeg Opus encoding error: {err.decode('utf-8', errors='ignore')}")
-            return b""
-    except Exception as e:
-        logger.error(f"Failed to execute ffmpeg for Opus encoding: {e}")
-        return b""
 
 
 class WebRequestHandler(BaseHTTPRequestHandler):

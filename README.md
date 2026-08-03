@@ -123,13 +123,9 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 | `ACTIVATION_KEYWORDS` | `obama,opama,opal,opa` | Keyword fallback list |
 | **TTS & Voice API** | | |
 | `TTS_API_URL` | `http://localhost:8000` | Base URL for external OpenAI-compatible TTS server |
-| `TTS_ENDPOINT` | `/v1/audio/speech` | Endpoint path for audio speech synthesis |
 | `TTS_MODEL` | `omnivoice` | Model name sent in synthesis payload |
 | `TTS_VOICE` | `mieto_fi` | Default voice identifier |
-| `TTS_LANGUAGE` | `fi` | Target language code |
 | `TTS_SPEED` | `1.0` | Speech playback rate multiplier |
-| `TTS_NUM_STEP` | `32` | Synthesis flow steps |
-| `TTS_GUIDANCE_SCALE` | `2.0` | Guidance scale for audio generation |
 | `TTS_RESPONSE_FORMAT` | `wav` | Returned audio format |
 | `TTS_TIMEOUT` | `30` | Request timeout in seconds |
 | **Audio** | | |

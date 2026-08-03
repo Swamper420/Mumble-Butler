@@ -98,22 +98,14 @@ class TestNewFixes(unittest.TestCase):
             brain = Brain()
             
             with patch('config.OLLAMA_MODEL', 'qwen3.5-1.7b-instruct'):
-                with patch('config.LLM_PROMPT_FORMAT', 'gemma'):
-                    tags = brain._get_tags()
-                    self.assertEqual(tags['system_start'], '<|im_start|>system\n')
-                    
-                    with patch('config.LLM_DISABLE_THINKING', True):
-                        prompt = brain._format_user_prompt("hello")
-                        self.assertEqual(prompt, "hello")
+                with patch('config.LLM_DISABLE_THINKING', True):
+                    prompt = brain._format_user_prompt("hello")
+                    self.assertEqual(prompt, "hello")
         
-            with patch('config.OLLAMA_MODEL', 'gemma2'):
-                with patch('config.LLM_PROMPT_FORMAT', 'gemma'):
-                    tags = brain._get_tags()
-                    self.assertEqual(tags['system_start'], '<start_of_turn>system\n')
-                        
-                    with patch('config.LLM_DISABLE_THINKING', True):
-                        prompt = brain._format_user_prompt("hello")
-                        self.assertEqual(prompt, "hello /no_think")
+            with patch('config.OLLAMA_MODEL', 'gemma-3-4b'):
+                with patch('config.LLM_DISABLE_THINKING', True):
+                    prompt = brain._format_user_prompt("hello")
+                    self.assertEqual(prompt, "hello /no_think")
 
 if __name__ == "__main__":
     unittest.main()

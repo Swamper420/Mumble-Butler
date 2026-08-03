@@ -9,7 +9,6 @@ import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-CLAUSE_DELIMITERS = re.compile(r'(?<=[.!?,\n;:—\-])\s+|(?<=\.\.\.)\s+|\n+')
 WHITESPACE_RE = re.compile(r'\s+')
 
 import pymumble_py3 as pymumble
@@ -380,7 +379,6 @@ class MadnessBot:
     def shutdown(self):
         self.logger.info("Shutting down...")
         self.running = False
-        self.save_stats()
 
         self.web_server.stop()
 
@@ -624,7 +622,7 @@ class MadnessBot:
     async def _generate_and_play_tts(self, speech_generation, sentence, user):
         if self.mumble and self.mumble.sound_output:
             import re
-            # Clean up literal formatting codes to prevent Kokoro from attempting to read them aloud
+            # Clean up literal formatting codes to prevent TTS from attempting to read them aloud
             cleaned_sentence = sentence.replace("\\n", " ").replace("/n", " ").replace("\\t", " ").replace("/t", " ")
             cleaned_sentence = re.sub(r'\s+', ' ', cleaned_sentence).strip()
             
@@ -714,6 +712,3 @@ class MadnessBot:
             "Memory": "ON" if self.brain.memory_enabled else "OFF",
         }
         return status
-
-    def load_stats(self): pass
-    def save_stats(self): pass
