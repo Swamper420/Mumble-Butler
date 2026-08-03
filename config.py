@@ -42,9 +42,13 @@ WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "True").lower() == "true"
 WEB_SEARCH_MAX_RESULTS = int(os.getenv("WEB_SEARCH_MAX_RESULTS", "3"))
 
 
-# --- AI CONFIG ---
-MOONSHINE_MODEL_SIZE = os.getenv("MOONSHINE_MODEL_SIZE", "UsefulSensors/moonshine-streaming-small")
-MOONSHINE_DEVICE = os.getenv("MOONSHINE_DEVICE", "cuda")
+# --- STT API CONFIG ---
+STT_API_URL = os.getenv("STT_API_URL", "http://localhost:8001")
+STT_BEAM_SIZE = int(os.getenv("STT_BEAM_SIZE", "5"))
+STT_VAD_FILTER = os.getenv("STT_VAD_FILTER", "True").lower() == "true"
+STT_WORD_TIMESTAMPS = os.getenv("STT_WORD_TIMESTAMPS", "False").lower() == "true"
+STT_INITIAL_PROMPT = os.getenv("STT_INITIAL_PROMPT", "")
+STT_TIMEOUT = int(os.getenv("STT_TIMEOUT", "15"))
 
 
 ACTIVATION_KEYWORDS = os.getenv("ACTIVATION_KEYWORDS", "obama,opama,opal,opa").split(",")

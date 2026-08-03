@@ -6,7 +6,7 @@ A voice-activated AI butler for Mumble. Listens for a wake word, transcribes spe
 
 | Category | Details |
 |---|---|
-| 🎙️ **Speech-to-Text** | [Moonshine](https://github.com/UsefulSensors/moonshine) streaming model via HuggingFace Transformers |
+| 🎙️ **Speech-to-Text** | External REST STT API (`POST /api/v1/transcribe`) serving Whisper / CTranslate2 models (e.g. `RASMUS/whisper-large-v3-turbo-finnish-ct2`) |
 | 🔔 **Wake Word** | [openWakeWord](https://github.com/dscripka/openWakeWord) with real-time streaming detection + keyword fallback with fuzzy matching ([rapidfuzz](https://github.com/rapidfuzz/RapidFuzz)) |
 | 🧠 **LLM API** | External [Ollama](https://ollama.com) API integration supporting any model with streaming responses |
 | 🗣️ **Text-to-Speech** | OpenAI-compatible TTS API with custom voice selection and sentence-level streaming |
@@ -37,7 +37,7 @@ python main.py
 ```
 main.py → MadnessBot (bot.py)
 ├── Brain         — LLM inference, memory, music recommendations
-├── Ear           — Moonshine speech-to-text
+├── Ear           — External STT REST API client
 ├── Voice         — External OpenAI-compatible TTS API
 ├── AudioManager  — Voice activity detection & per-user buffering
 ├── WakewordDetector — openWakeWord streaming detection
@@ -113,8 +113,12 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 | `LLM_MAX_TOKENS` | `1024` | Max tokens per response |
 | `LLM_CONTEXT_SIZE` | `2000` | Context window size |
 | **Speech Recognition** | | |
-| `MOONSHINE_MODEL_SIZE` | `UsefulSensors/moonshine-streaming-small` | Moonshine model |
-| `MOONSHINE_DEVICE` | `cuda` | `cuda` or `cpu` |
+| `STT_API_URL` | `http://localhost:8001` | STT REST API endpoint URL (`POST /api/v1/transcribe`) |
+| `STT_BEAM_SIZE` | `5` | Beam size for search decoding |
+| `STT_VAD_FILTER` | `True` | Enable VAD silence filtering |
+| `STT_WORD_TIMESTAMPS` | `False` | Include word-level timestamps |
+| `STT_INITIAL_PROMPT` | | Context or style prompt for transcription |
+| `STT_TIMEOUT` | `15` | Request timeout in seconds |
 | **Wake Word** | | |
 | `WAKEWORD_LIBRARY` | `openwakeword` | Wake word engine |
 | `WAKEWORD_MODEL_PATHS` | | Comma-separated custom model paths |

@@ -1,5 +1,4 @@
 pymumble_py3
-transformers>=4.48.0
 requests
 numpy
 python-dotenv

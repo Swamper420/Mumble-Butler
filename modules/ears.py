@@ -1,74 +1,83 @@
-import torch
-import numpy as np
+import io
+import wave
+import logging
+import requests
 import config
-from utils import resample_audio, pcm_to_float
 
-try:
-    from transformers import AutoProcessor, MoonshineStreamingForConditionalGeneration
-    STT_AVAILABLE = True
-except ImportError as e:
-    STT_AVAILABLE = False
-    import traceback
-    print(f"❌ Ear: ImportError loading transformers: {e}")
-    traceback.print_exc()
+logger = logging.getLogger("Ear")
+STT_AVAILABLE = True
 
 class Ear:
-    def __init__(self):
-        self.model = None
-        self.processor = None
-        self.device = config.MOONSHINE_DEVICE
-        if STT_AVAILABLE:
-            try:
-                print(f"👂 Loading Moonshine ({self.device})...")
-                self.processor = AutoProcessor.from_pretrained(config.MOONSHINE_MODEL_SIZE)
-                self.model = MoonshineStreamingForConditionalGeneration.from_pretrained(config.MOONSHINE_MODEL_SIZE)
-                if self.device == 'cuda' and torch.cuda.is_available():
-                    self.model = self.model.half()
-                self.model.to(self.device)
-                print("✅ Moonshine Loaded Successfully!")
-            except Exception as e:
-                import traceback
-                print(f"❌ Moonshine Load Error: {e}")
-                traceback.print_exc()
+    def __init__(self, api_url: str = None):
+        self.api_url = (api_url or getattr(config, "STT_API_URL", "http://localhost:8001")).rstrip("/")
+        logger.info(f"👂 Initialized Ear module connected to external STT API at {self.api_url}")
 
     def transcribe(self, raw_pcm: bytes) -> str:
-        if not self.model or not self.processor: return ""
-
-        # 1. Convert bytes to float32
-        audio_float = pcm_to_float(raw_pcm)
-        if len(audio_float) == 0:
+        """
+        Transcribes 48kHz mono 16-bit PCM audio bytes by calling the external STT REST API
+        POST /api/v1/transcribe via multipart/form-data.
+        """
+        if not raw_pcm:
             return ""
 
-        # 2. Trim leading and trailing silence
-        trim_thresh = getattr(config, 'SILENCE_TRIM_THRESHOLD', 0.001)
-        non_silent = np.where(np.abs(audio_float) > trim_thresh)[0]
-        if len(non_silent) > 0:
-            audio_float = audio_float[non_silent[0]:non_silent[-1] + 1]
-        else:
-            return ""
-
-        # 3. Resample 48k (Mumble) -> 16k (Moonshine)
-        audio_16k = resample_audio(audio_float, 48000, 16000)
-
-        # 4. Transcribe using transformers
+        # Package raw PCM (48kHz mono 16-bit) into WAV format in memory
         try:
-            inputs = self.processor(audio_16k, sampling_rate=16000, return_tensors="pt")
-            
-            # Move to device and cast float values to model's parameter dtype (e.g. float16 on cuda)
-            processed_inputs = {}
-            for k, v in inputs.items():
-                if torch.is_floating_point(v):
-                    processed_inputs[k] = v.to(device=self.device, dtype=self.model.dtype)
-                else:
-                    processed_inputs[k] = v.to(self.device)
-            
-            with torch.no_grad():
-                generated_ids = self.model.generate(**processed_inputs)
-            transcription = self.processor.batch_decode(generated_ids, skip_special_tokens=True)
-            return transcription[0].strip()
+            wav_io = io.BytesIO()
+            with wave.open(wav_io, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(48000)
+                wf.writeframes(raw_pcm)
+            wav_bytes = wav_io.getvalue()
         except Exception as e:
-            print(f"❌ Transcription Error: {e}")
+            logger.error(f"❌ Ear: Failed to convert PCM bytes to WAV: {e}")
             return ""
+
+        endpoint = f"{self.api_url}/api/v1/transcribe"
+        timeout = getattr(config, "STT_TIMEOUT", 15)
+
+        files = {
+            "file": ("audio.wav", wav_bytes, "audio/wav")
+        }
+
+        vad_filter = getattr(config, "STT_VAD_FILTER", True)
+        word_timestamps = getattr(config, "STT_WORD_TIMESTAMPS", False)
+        initial_prompt = getattr(config, "STT_INITIAL_PROMPT", "")
+
+        data = {
+            "beam_size": str(int(getattr(config, "STT_BEAM_SIZE", 5))),
+            "vad_filter": "true" if vad_filter else "false",
+            "word_timestamps": "true" if word_timestamps else "false",
+        }
+
+        if initial_prompt:
+            data["initial_prompt"] = str(initial_prompt)
+
+        try:
+            resp = requests.post(endpoint, files=files, data=data, timeout=timeout)
+            resp.raise_for_status()
+            result = resp.json()
+            if isinstance(result, dict):
+                text = result.get("text", "")
+                return text.strip() if text else ""
+            return ""
+        except Exception as e:
+            logger.error(f"❌ STT API Error transcribing audio ({endpoint}): {e}")
+            return ""
+
+    def health_check(self) -> dict:
+        """Queries STT API health status from GET /health."""
+        endpoint = f"{self.api_url}/health"
+        timeout = getattr(config, "STT_TIMEOUT", 5)
+        try:
+            resp = requests.get(endpoint, timeout=timeout)
+            if resp.status_code == 200:
+                return resp.json()
+        except Exception as e:
+            logger.warning(f"STT API health check failed: {e}")
+
+        return {"status": "error", "error": f"Failed to reach health endpoint on {self.api_url}"}
+
 
 
 
