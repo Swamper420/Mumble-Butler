@@ -62,7 +62,7 @@ class MusicRecommender:
         Queries iTunes with a track string (e.g., 'Artist - Title') to see if it exists.
         Returns the formatted 'Artist - Title' from iTunes if found, or None otherwise.
         """
-        if not track_str or track_str.lower() in ("random music", "music"):
+        if not track_str or track_str.lower() in ("random music", "music", "satunnainen musiikki", "musiikki"):
             return None
         try:
             url = "https://itunes.apple.com/search"
@@ -97,7 +97,7 @@ class MusicRecommender:
         # Filter out history
         available_tracks = []
         for track in candidates:
-            if not track or track.lower() in ("random music", "music"):
+            if not track or track.lower() in ("random music", "music", "satunnainen musiikki", "musiikki"):
                 continue
             
             # Standardize / verify on iTunes if possible

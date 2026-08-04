@@ -414,9 +414,10 @@ class Brain:
 
         if not self.llm:
             print("🧠 LLM is offline. Selecting from curated fallback catalog.")
-            candidate_list = [description] if description and description != "random music" and " - " in description else fallback_tracks
+            is_generic = not description or description.lower() in ("random music", "satunnainen musiikki", "musiikki")
+            candidate_list = [description] if not is_generic and " - " in description else fallback_tracks
             song = self.recommender.get_recommendation(candidate_list)
-            vibe_summary = f"Kuratoitu valikoima hakusanalle '{description}'" if description and description != "random music" else "Kuratoitu klassinen tunnelma"
+            vibe_summary = f"Kuratoitu valikoima hakusanalle '{description}'" if not is_generic else "Kuratoitu klassinen tunnelma"
             return (song, vibe_summary) if return_meta else song
 
         context_str = ""
