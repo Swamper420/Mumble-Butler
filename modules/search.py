@@ -3,9 +3,9 @@ import re
 import requests
 import config
 
-CLEAN_USER_PREFIX = re.compile(r'^User\s+.*?\s+(says|asks):\s*', re.IGNORECASE)
+CLEAN_USER_PREFIX = re.compile(r'^(User|Käyttäjä)\s+.*?\s+(says|asks|sanoo|kysyy):\s*', re.IGNORECASE)
 CLEAN_WAKEWORD = re.compile(r'^(obama|opama|opal|opa)[,\s]+', re.IGNORECASE)
-CLEAN_SEARCH_VERB = re.compile(r'^(search|google|look up|find info for|find info on)\s+', re.IGNORECASE)
+CLEAN_SEARCH_VERB = re.compile(r'^(search|google|look up|find info for|find info on|hae|etsi|googlaa)\s+', re.IGNORECASE)
 
 
 class WebSearcher:
@@ -33,18 +33,21 @@ class WebSearcher:
             "hi", "hello", "hey", "how are you", "who are you", "what is your name",
             "what's your name", "thank you", "thanks", "bye", "goodbye", "good morning",
             "good night", "ping", "shut up", "stop", "forget", "undo", "help",
-            "what can you do", "tell me a joke", "tell a joke", "sing a song"
+            "what can you do", "tell me a joke", "tell a joke", "sing a song",
+            "hei", "moi", "terve", "mitä kuuluu", "kuka olet", "mikä on nimesi",
+            "kiitos", "heippa", "näkemiin", "hyvää huomenta", "hyvää yötä",
+            "hiljaa", "unohda", "apua", "kerro vitsi", "laula laulu"
         ]
         if prompt_lower in small_talk or prompt_lower.rstrip("?!.") in small_talk:
             return False
 
         # Skip short greetings or simple arithmetic
         words = prompt_lower.split()
-        if len(words) <= 2 and all(w in ["hi", "hello", "hey", "obama", "bot", "there", "yo"] for w in words):
+        if len(words) <= 2 and all(w in ["hi", "hello", "hey", "obama", "bot", "there", "yo", "hei", "moi", "terve"] for w in words):
             return False
 
         # Skip simple arithmetic expressions (e.g. "what is 2+2")
-        if re.search(r'^\s*(what\s+is\s+)?\d+[\s\+\-\*\/\^]+\d+\s*\??$', prompt_lower):
+        if re.search(r'^\s*(what\s+is\s+|mikä\s+on\s+)?\d+[\s\+\-\*\/\^]+\d+\s*\??$', prompt_lower):
             return False
 
         # Direct search & real-time factual keywords
@@ -52,7 +55,10 @@ class WebSearcher:
             "search", "google", "look up", "find info", "browse",
             "weather", "news", "score", "stock price", "who won", "latest", "today",
             "current", "release date", "capital of", "president of", "prime minister",
-            "schedule", "match result", "patch notes"
+            "schedule", "match result", "patch notes",
+            "hae", "etsi", "googlaa", "sää", "uutiset", "tulos", "osake",
+            "kuka voitti", "uusin", "tänään", "nykyinen", "julkaisupäivä",
+            "pääkaupunki", "presidentti", "pääministeri", "aikataulu"
         ]
         if any(trig in prompt_lower for trig in explicit_triggers):
             return True
@@ -60,7 +66,8 @@ class WebSearcher:
         # Factual query triggers
         factual_questions = (
             "who is ", "where is ", "when is ", "what is the price", "what time is",
-            "what happened to", "how much is", "how to "
+            "what happened to", "how much is", "how to ",
+            "kuka on ", "missä on ", "milloin on ", "mikä on ", "paljonko ", "kuinka ", "mitä tapahtui "
         )
         if prompt_lower.startswith(factual_questions):
             return True
@@ -68,7 +75,9 @@ class WebSearcher:
         # Topic indicators
         topic_keywords = [
             "weather", "news", "score", "stock", "crypto", "election",
-            "patch", "specs", "location", "address", "release date"
+            "patch", "specs", "location", "address", "release date",
+            "sää", "uutiset", "tulokset", "osakkeet", "kryptot", "vaalit",
+            "sijainti", "osoite", "julkaisupäivä"
         ]
         if any(kw in prompt_lower for kw in topic_keywords):
             return True
@@ -144,14 +153,14 @@ class WebSearcher:
         if not results:
             return ""
 
-        context_lines = [f"[Real-time Web Search Context for: '{query}']"]
+        context_lines = [f"[Reaaliaikaiset verkkohaut kyselylle: '{query}']"]
         for idx, res in enumerate(results, 1):
             context_lines.append(f"{idx}. {res['title']}")
-            context_lines.append(f"   Snippet: {res['snippet']}")
-            context_lines.append(f"   Source: {res['url']}")
+            context_lines.append(f"   Tiivistelmä: {res['snippet']}")
+            context_lines.append(f"   Lähde: {res['url']}")
         context_lines.append(
-            "CRITICAL INSTRUCTION: Base your response strictly on the above real-time search context. "
-            "Do not guess or make up facts not supported by the search results."
+            "TÄRKEÄ OHJE: Perusta vastauksesi tiukasti yllä olevaan reaaliaikaiseen hakukontekstiin. "
+            "Älä arvaile tai keksi tosiasioita, joita hakutulokset eivät tue. Vastaa aina suomeksi."
         )
 
         return "\n".join(context_lines)

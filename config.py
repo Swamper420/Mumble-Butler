@@ -53,10 +53,11 @@ WAKEWORD_THRESHOLD = float(os.getenv("WAKEWORD_THRESHOLD", "0.5"))
 WAKEWORD_CONSECUTIVE_HITS = int(os.getenv("WAKEWORD_CONSECUTIVE_HITS", "2"))
 
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", (
-    "You are 'Obama', a suave and savvy digital butler from the 2000s. "
+    "Olet 'Obama', sulava ja fiksu digitaalinen hovimestari 2000-luvulta. "
+    "Vastaa aina suomeksi, tiiviisti ja luonnollisesti."
 ))
 
-SHUTUP_KEYWORDS = os.getenv("SHUTUP_KEYWORDS", "shut up,shutup,be quiet").split(",")
+SHUTUP_KEYWORDS = os.getenv("SHUTUP_KEYWORDS", "shut up,shutup,be quiet,turpa kiinni,ole hiljaa,tuki turpasi,hiljaa,vaienna").split(",")
 
 # --- TTS API CONFIG ---
 TTS_API_URL = os.getenv("TTS_API_URL", "http://localhost:8000")
@@ -73,42 +74,42 @@ TTS_TIMEOUT = int(os.getenv("TTS_TIMEOUT", "30"))
 FAST_AUDIO_RESPONSES_ENABLED = os.getenv("FAST_AUDIO_RESPONSES_ENABLED", "False").lower() == "true"
 FAST_AUDIO_CACHE_DIR = os.getenv("FAST_AUDIO_CACHE_DIR", "data/precached_audio")
 FAST_WAKEWORD_RESPONSES = [
-    p.strip() for p in os.getenv("FAST_WAKEWORD_RESPONSES", "Yes?, [chuckle], Listening..., Mm?, Sir?, Yo").split(",") if p.strip()
+    p.strip() for p in os.getenv("FAST_WAKEWORD_RESPONSES", "Kyllä?, [naurahdus], Kuuntelen..., Niin?, Herra?, Nii").split(",") if p.strip()
 ]
 FAST_ACTION_CONFIRMATIONS = {
-    "MUSIC": os.getenv("FAST_ACTION_MUSIC", "Fetching song..."),
-    "SEARCH": os.getenv("FAST_ACTION_SEARCH", "Searching up to date information..."),
-    "THINK": os.getenv("FAST_ACTION_THINK", "Let me see..."),
-    "MEMORY": os.getenv("FAST_ACTION_MEMORY", "Wiping memory..."),
-    "STOP": os.getenv("FAST_ACTION_STOP", "Stopping..."),
-    "VOLUME": os.getenv("FAST_ACTION_VOLUME", "Adjusting volume..."),
-    "MODE": os.getenv("FAST_ACTION_MODE", "Changing mode..."),
-    "SKIP": os.getenv("FAST_ACTION_SKIP", "Skipping..."),
-    "RESUME": os.getenv("FAST_ACTION_RESUME", "Resuming..."),
-    "FILE": os.getenv("FAST_ACTION_FILE", "Playing file..."),
-    "REPEAT": os.getenv("FAST_ACTION_REPEAT", "Setting repeat..."),
-    "REMIND": os.getenv("FAST_ACTION_REMIND", "Setting reminder..."),
-    "STATUS": os.getenv("FAST_ACTION_STATUS", "Checking status..."),
-    "PING": os.getenv("FAST_ACTION_PING", "Checking in..."),
+    "MUSIC": os.getenv("FAST_ACTION_MUSIC", "Haetaan musiikkia..."),
+    "SEARCH": os.getenv("FAST_ACTION_SEARCH", "Haetaan ajantasaista tietoa..."),
+    "THINK": os.getenv("FAST_ACTION_THINK", "Hetkinen..."),
+    "MEMORY": os.getenv("FAST_ACTION_MEMORY", "Tyhjennetään muistia..."),
+    "STOP": os.getenv("FAST_ACTION_STOP", "Pysäytetään..."),
+    "VOLUME": os.getenv("FAST_ACTION_VOLUME", "Säädetään äänenvoimakkuutta..."),
+    "MODE": os.getenv("FAST_ACTION_MODE", "Vaihdetaan tilaa..."),
+    "SKIP": os.getenv("FAST_ACTION_SKIP", "Ohitetaan..."),
+    "RESUME": os.getenv("FAST_ACTION_RESUME", "Jatketaan..."),
+    "FILE": os.getenv("FAST_ACTION_FILE", "Toistetaan tiedostoa..."),
+    "REPEAT": os.getenv("FAST_ACTION_REPEAT", "Asetetaan toisto..."),
+    "REMIND": os.getenv("FAST_ACTION_REMIND", "Asetetaan muistutus..."),
+    "STATUS": os.getenv("FAST_ACTION_STATUS", "Tarkistetaan tilaa..."),
+    "PING": os.getenv("FAST_ACTION_PING", "Tarkistetaan yhteyttä..."),
 }
 
 # --- VOICE COMMAND TRIGGERS ---
 VOICE_TRIGGERS = {
-    'FORGET': ["forget"],
-    'VOLUME': ["volume"],
-    'PLAY_MUSIC': ["music"],
-    'PLAY_SPECIFIC': ["play", "queue"],
-    'RECOMMEND': ["recommend"],
-    'SEARCH': ["search", "google", "look up"],
-    'STOP': ["stop", "silence"],
-    'RESUME': ["resume"],
-    'SKIP': ["skip", "next"],
-    'PLAY_FILE': ["file"],
-    'REPEAT': ["repeat"],
-    'MODE': ["mode"],
-    'REMIND': ["remind"],
-    'STATUS': ["status"],
-    'PING': ["ping", "are you there"]
+    'FORGET': ["forget", "unohda", "tyhjennä muisti", "unohda muisti"],
+    'VOLUME': ["volume", "äänenvoimakkuus", "volyymi"],
+    'PLAY_MUSIC': ["music", "musiikkia", "musiikki", "soita musiikkia"],
+    'PLAY_SPECIFIC': ["play", "queue", "soita", "laita"],
+    'RECOMMEND': ["recommend", "suosittele", "suosittele musiikkia", "ehdota"],
+    'SEARCH': ["search", "google", "look up", "hae", "etsi", "googlaa"],
+    'STOP': ["stop", "silence", "pysäytä", "seis", "hiljaa", "lopeta", "vaienna"],
+    'RESUME': ["resume", "jatka"],
+    'SKIP': ["skip", "next", "seuraava", "ohita"],
+    'PLAY_FILE': ["file", "tiedosto"],
+    'REPEAT': ["repeat", "toista"],
+    'MODE': ["mode", "tila"],
+    'REMIND': ["remind", "muistuta"],
+    'STATUS': ["status", "tilanne"],
+    'PING': ["ping", "are you there", "oletko siellä", "pingaa"]
 }
 
 # --- BOTAMUSIQUE COMMANDS ---

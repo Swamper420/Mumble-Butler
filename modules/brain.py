@@ -129,20 +129,20 @@ class Brain:
         return ""
 
     def generate_response(self, user_prompt: str, max_tokens=None, stop=None, search_context=None) -> str:
-        if not self.llm: return "My brain is offline."
+        if not self.llm: return "Aivoni ovat offline-tilassa."
 
         if max_tokens is None:
             max_tokens = getattr(config, 'LLM_MAX_TOKENS', 512)
 
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
-        no_think_instruction = " Do NOT output thinking blocks, <think> tags, or internal reasoning. Respond directly with your answer." if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
+        no_think_instruction = " ÄLÄ tulosta ajattelulohkoja, <think>-tageja tai sisäistä päättelyä. Vastaa suoraan ilman niitä suomeksi." if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
 
         web_context = self._build_search_context(user_prompt, search_context)
         if web_context:
-            full_system = f"{base_system}{no_think_instruction}\nContext: It is {now}.\n\n{web_context}"
+            full_system = f"{base_system}{no_think_instruction}\nKonteksti: Kello on {now}.\n\n{web_context}"
         else:
-            full_system = f"{base_system}{no_think_instruction}\nContext: It is {now}."
+            full_system = f"{base_system}{no_think_instruction}\nKonteksti: Kello on {now}."
 
         messages = [
             {"role": "system", "content": full_system}
@@ -172,11 +172,11 @@ class Brain:
             self._update_history(user_prompt, response)
             return response
         except Exception as e:
-            return f"Thinking error: {e}"
+            return f"Virhe ajattelussa: {e}"
 
     def generate_response_stream(self, user_prompt: str, max_tokens=None, stop=None, search_context=None):
         if not self.llm:
-            yield "My brain is offline."
+            yield "Aivoni ovat offline-tilassa."
             return
 
         if max_tokens is None:
@@ -184,13 +184,13 @@ class Brain:
 
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
-        no_think_instruction = " Do NOT output thinking blocks, <think> tags, or internal reasoning. Respond directly with your answer." if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
+        no_think_instruction = " ÄLÄ tulosta ajattelulohkoja, <think>-tageja tai sisäistä päättelyä. Vastaa suoraan ilman niitä suomeksi." if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
 
         web_context = self._build_search_context(user_prompt, search_context)
         if web_context:
-            full_system = f"{base_system}{no_think_instruction}\nContext: It is {now}.\n\n{web_context}"
+            full_system = f"{base_system}{no_think_instruction}\nKonteksti: Kello on {now}.\n\n{web_context}"
         else:
-            full_system = f"{base_system}{no_think_instruction}\nContext: It is {now}."
+            full_system = f"{base_system}{no_think_instruction}\nKonteksti: Kello on {now}."
 
         messages = [
             {"role": "system", "content": full_system}
@@ -308,7 +308,7 @@ class Brain:
             final = self._strip_thinking(complete_response).strip().replace('"', '')
             self._update_history(user_prompt, final)
         except Exception as e:
-            yield f"Thinking error: {e}"
+            yield f"Virhe ajattelussa: {e}"
 
     def generate_response_stream_async(self, user_prompt: str, queue, loop):
         """Runs in a background thread, puts tokens into the queue."""
@@ -317,7 +317,7 @@ class Brain:
             for token in generator:
                 loop.call_soon_threadsafe(queue.put_nowait, token)
         except Exception as e:
-            loop.call_soon_threadsafe(queue.put_nowait, f"Thinking error: {e}")
+            loop.call_soon_threadsafe(queue.put_nowait, f"Virhe ajattelussa: {e}")
         finally:
             loop.call_soon_threadsafe(queue.put_nowait, None)
 
@@ -390,18 +390,18 @@ class Brain:
         4. History filtering.
         """
         system_content = (
-            "You are an expert music DJ and recommendation engine for a voice chat butler.\n"
-            "Analyze the recent room chat context and the user request to recommend songs.\n"
-            "Respond strictly in the following format:\n\n"
+            "Olet asiantunteva musiikki-DJ ja suosittelumoottori äänichat-hovimestarille.\n"
+            "Analysoi viimeaikainen huoneen keskustelukonteksti ja käyttäjän pyyntö suositellaksesi kappaleita.\n"
+            "Vastaa tiukasti seuraavassa muodossa:\n\n"
             "[INTENT]\n"
-            "<SPECIFIC if user requested an exact song/artist, GENRE_MOOD if genre/vibe requested, or OPEN if random/contextual>\n\n"
+            "<SPECIFIC jos käyttäjä pyysi tiettyä kappaletta/artistia, GENRE_MOOD jos genrea/tunnelmaa pyydettiin, tai OPEN jos satunnainen/kontekstuaalinen>\n\n"
             "[VIBE]\n"
-            "<A concise 1-sentence summary of the music vibe, e.g. 'Upbeat 80s synthwave for late night coding'>\n\n"
+            "<Tiivis 1 lauseen tiivistelmä musiikin tunnelmasta suomeksi, esim. 'Energistä 80-luvun synthwavea myöhäisillan koodaukseen'>\n\n"
             "[RECOMMENDATIONS]\n"
-            "1. Artist Name - Track Title\n"
-            "2. Artist Name - Track Title\n"
-            "3. Artist Name - Track Title\n"
-            "4. Artist Name - Track Title\n"
+            "1. Artistin Nimi - Kappaleen Nimi\n"
+            "2. Artistin Nimi - Kappaleen Nimi\n"
+            "3. Artistin Nimi - Kappaleen Nimi\n"
+            "4. Artistin Nimi - Kappaleen Nimi\n"
         )
 
         fallback_tracks = [
@@ -416,7 +416,7 @@ class Brain:
             print("🧠 LLM is offline. Selecting from curated fallback catalog.")
             candidate_list = [description] if description and description != "random music" and " - " in description else fallback_tracks
             song = self.recommender.get_recommendation(candidate_list)
-            vibe_summary = f"Curated selection for '{description}'" if description and description != "random music" else "Curated classic vibe"
+            vibe_summary = f"Kuratoitu valikoima hakusanalle '{description}'" if description and description != "random music" else "Kuratoitu klassinen tunnelma"
             return (song, vibe_summary) if return_meta else song
 
         context_str = ""
@@ -424,12 +424,12 @@ class Brain:
             recent = chat_context[-10:]
             context_str = " | ".join([f"{t['user']}: {t['text']}" for t in recent])
         else:
-            context_str = "No recent chat history."
+            context_str = "Ei viimeaikaisia viestejä."
 
         user_content = (
-            f"Recent chat context: {context_str}\n"
-            f"User request: {description or 'Recommend a good song for the room'}\n"
-            f"Generate recommendations matching the vibe."
+            f"Viimeaikainen keskustelukonteksti: {context_str}\n"
+            f"Käyttäjän pyyntö: {description or 'Suosittele hyvää kappaletta huoneeseen'}\n"
+            f"Luo tunnelmaan sopivia suosituksia."
         )
 
         messages = [
@@ -454,7 +454,7 @@ class Brain:
                 print("⚠️ LLM didn't return formatted recommendations. Trying fallback track list.")
                 candidate_list = [description] if description and " - " in description else fallback_tracks
                 song = self.recommender.get_recommendation(candidate_list)
-                vibe_summary = vibe or "Eclectic choice"
+                vibe_summary = vibe or "Valittu tunnelman mukaan"
                 return (song, vibe_summary) if return_meta else song
 
             is_specific = (intent == "SPECIFIC")
@@ -462,14 +462,14 @@ class Brain:
                 recommendations,
                 allow_history_override=is_specific
             )
-            vibe_summary = vibe or "Vibe-matched selection"
+            vibe_summary = vibe or "Valittu tunnelman mukaan"
             
             return (selected_track, vibe_summary) if return_meta else selected_track
 
         except Exception as e:
             print(f"⚠️ Recommendation error: {e}. Using fallback track selection.")
             song = self.recommender.get_recommendation(fallback_tracks)
-            return (song, "Fallback vibe") if return_meta else song
+            return (song, "Fallback-tunnelma") if return_meta else song
 
 
     def generate_hourly_report(self, active_users, recent_transcripts):
@@ -480,18 +480,18 @@ class Brain:
         if recent_transcripts:
             transcript_text = "\n".join([f"- {t['user']}: {t['text']}" for t in recent_transcripts])
         else:
-            transcript_text = "No one has spoken recently."
+            transcript_text = "Kukaan ei ole puhunut äskettäin."
 
-        users_text = ", ".join(active_users) if active_users else "No one else is here."
+        users_text = ", ".join(active_users) if active_users else "Kukaan muu ei ole täällä."
 
         system_content = (
             f"{config.SYSTEM_PROMPT} "
-            f"It is currently {now}. You are giving a periodic hourly status update to the room. "
-            f"Mention the current time, acknowledge who is in the room ({users_text}), "
-            f"and briefly summarize or comment on the vibe based on the last minute of conversation if any.\n"
-            f"Keep it brief (under 4 sentences), witty, and butler-like."
+            f"Kello on tällä hetkellä {now}. Annat säännöllisen tunneittaisen tilannekatsauksen huoneelle. "
+            f"Mainitse nykyinen kellonaika, huomioi keitä huoneessa on ({users_text}), "
+            f"ja tiivistä tai kommentoi lyhyesti tunnelmaa viimeisten minuutin keskustelujen perusteella, jos niitä on.\n"
+            f"Pidä se lyhyenä (alle 4 lausetta), nokkelana ja hovimestarimaisena suomeksi."
         )
-        user_content = f"Recent conversation:\n{transcript_text}\n\nGive the status update."
+        user_content = f"Viimeaikainen keskustelu:\n{transcript_text}\n\nAnna tilannekatsaus."
         messages = [
             {"role": "system", "content": system_content},
             {"role": "user", "content": user_content}
@@ -505,4 +505,4 @@ class Brain:
             return self._strip_thinking(output['choices'][0]['message']['content'].strip().replace('"', ''))
         except Exception as e:
             print(f"Report generation error: {e}")
-            return f"It is {now}. I am unable to assess the situation due to a processing error."
+            return f"Kello on {now}. Tilannetta ei voida arvioida käsittelyvirheen vuoksi."

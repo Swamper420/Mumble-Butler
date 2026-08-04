@@ -53,6 +53,28 @@ class TestWebSearcher(unittest.TestCase):
         call_args = mock_post.call_args
         self.assertEqual(call_args[1]["data"]["q"], "weather in Helsinki")
 
+    @patch('requests.post')
+    def test_search_parsing_finnish(self, mock_post):
+        mock_html = """
+        <html>
+            <body>
+                <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fsää.fi%2Fhelsinki">Sää Helsinki</a>
+                <a class="result__snippet">Aurinkoista ja 22°C.</a>
+            </body>
+        </html>
+        """
+        mock_response = MagicMock()
+        mock_response.text = mock_html
+        mock_response.status_code = 200
+        mock_post.return_value = mock_response
+
+        searcher = WebSearcher()
+        results = searcher.search("Käyttäjä Terry sanoo: Obama hae sää Helsingissä")
+
+        self.assertEqual(len(results), 1)
+        call_args = mock_post.call_args
+        self.assertEqual(call_args[1]["data"]["q"], "sää Helsingissä")
+
     def test_format_search_context(self):
         searcher = WebSearcher()
         results = [

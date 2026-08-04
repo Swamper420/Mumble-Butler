@@ -81,7 +81,7 @@ class VoiceHandler:
             else:
                 self.bot.play_action_confirmation("THINK")
             # If no command matched, let the LLM answer
-            self.bot.say_stream(f"User {user} says: {content}", user=user)
+            self.bot.say_stream(f"Käyttäjä {user} sanoo: {content}", user=user)
 
         return True
 
@@ -92,7 +92,7 @@ class VoiceHandler:
         if self._has_trigger(content, config.VOICE_TRIGGERS['FORGET']):
             self.bot.play_action_confirmation("MEMORY")
             self.bot.brain.reset_memory()
-            self.bot.say_async("Memory wiped.", user=user)
+            self.bot.say_async("Muisti tyhjennetty.", user=user)
             return True
 
         # 2. Volume
@@ -115,7 +115,7 @@ class VoiceHandler:
                     target = "one-shot" if m in ["oneshot", "one shot"] else m
                     self.bot.set_mode(target)
                     return True
-            self.bot.say_async("Available modes are: one-shot, autoplay, repeat, and random.", user=user)
+            self.bot.say_async("Saatavilla olevat tilat ovat: one-shot, autoplay, repeat ja random.", user=user)
             return True
 
         # 4. Recommend
@@ -130,7 +130,7 @@ class VoiceHandler:
                 return_meta=True
             )
             if song:
-                announcement = f"Queued {song}. {vibe}" if vibe else f"Queued {song}"
+                announcement = f"Jonossa: {song}. {vibe}" if vibe else f"Jonossa: {song}"
                 self.bot.say_async(announcement, user=user)
                 self.bot.play(song)
             return True
@@ -159,7 +159,7 @@ class VoiceHandler:
                 return_meta=True
             )
             if rec:
-                announcement = f"Queued {rec}. {vibe}" if vibe else f"Queued {rec}"
+                announcement = f"Jonossa: {rec}. {vibe}" if vibe else f"Jonossa: {rec}"
                 self.bot.say_async(announcement, user=user)
                 self.bot.play(rec)
             return True
@@ -208,45 +208,63 @@ class VoiceHandler:
             if reminder:
                 seconds, time_text, message = reminder
                 self.bot.schedule_reminder(seconds, message)
-                self.bot.say_async(f"I will remind you in {time_text}.", user=user)
+                self.bot.say_async(f"Muistutan sinua {time_text} kuluttua.", user=user)
             else:
-                self.bot.say_async("Try saying remind me in 10 minutes about something.", user=user)
+                self.bot.say_async("Kokeile sanoa: muistuta minua 10 minuutin kuluttua asiasta X.", user=user)
             return True
 
         # 13. Status
         if self._has_trigger(content, config.VOICE_TRIGGERS.get('STATUS', [])):
             self.bot.play_action_confirmation("STATUS")
             status = self.bot.get_status()
-            summary = f"I am connected with an uptime of {status['Uptime']}. The LLM is {status['LLM']}. Listening is {status['Listening']}."
+            summary = f"Olen yhdistettynä, päälläoloaika {status['Uptime']}. LLM on {status['LLM']}. Kuuntelu on {status['Listening']}."
             self.bot.say_async(summary, user=user)
             return True
 
         # 14. Ping
         if self._has_trigger(content, config.VOICE_TRIGGERS.get('PING', [])):
             self.bot.play_action_confirmation("PING")
-            self.bot.say_async("Pong! I am here.", user=user)
+            self.bot.say_async("Pong! Olen täällä.", user=user)
             return True
 
         return False
 
     def _parse_reminder(self, content):
+        # 1. English pattern
         match = re.search(
             r"\bremind(?: me)? in (\d+)\s+(second|minute|hour)s?\b\s+(?:(?:about|to)\s+)?(.+)",
             content,
+            re.IGNORECASE
         )
-        if not match:
-            return None
+        if match:
+            amount = int(match.group(1))
+            unit = match.group(2).lower()
+            message = (match.group(3) or "").strip()
+            if message:
+                unit_seconds = {"second": 1, "minute": 60, "hour": 3600}
+                normalized_unit = f"{unit}s" if amount != 1 else unit
+                return amount * unit_seconds[unit], f"{amount} {normalized_unit}", message
 
-        amount = int(match.group(1))
-        unit = match.group(2)
-        message = (match.group(3) or "").strip()
-        if not message:
-            return None
-        unit_seconds = {
-            "second": 1,
-            "minute": 60,
-            "hour": 3600,
-        }
-        normalized_unit = f"{unit}s" if amount != 1 else unit
+        # 2. Finnish pattern
+        match_fi = re.search(
+            r"\bmuistuta(?: minua)? (\d+)\s+(sekunnin|minuutin|tunnin|sekuntia|minuuttia|tuntia)(?:\s+kuluttua)?(?:\s+(?:asiasta|että|to|about))?\s+(.+)",
+            content,
+            re.IGNORECASE
+        )
+        if match_fi:
+            amount = int(match_fi.group(1))
+            raw_unit = match_fi.group(2).lower()
+            message = (match_fi.group(3) or "").strip()
+            if message:
+                unit_map = {
+                    "sekunnin": (1, "sekunnin"),
+                    "sekuntia": (1, "sekunnin"),
+                    "minuutin": (60, "minuutin"),
+                    "minuuttia": (60, "minuutin"),
+                    "tunnin": (3600, "tunnin"),
+                    "tuntia": (3600, "tunnin"),
+                }
+                mult, unit_name = unit_map[raw_unit]
+                return amount * mult, f"{amount} {unit_name}", message
 
-        return amount * unit_seconds[unit], f"{amount} {normalized_unit}", message
+        return None

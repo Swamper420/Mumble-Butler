@@ -75,7 +75,7 @@ class TestFastAudioResponses(unittest.TestCase):
         vol_50_file = os.path.join(self.temp_cache_dir, "michael", "volume", "50.pcm")
         self.assertTrue(os.path.exists(vol_50_file))
         with open(vol_50_file, "rb") as f:
-            self.assertEqual(f.read(), b"pcm_michael_Volume 50")
+            self.assertEqual(f.read(), "pcm_michael_Äänenvoimakkuus 50".encode("utf-8"))
 
     @patch("bot.Voice")
     @patch("bot.Brain")
@@ -102,7 +102,7 @@ class TestFastAudioResponses(unittest.TestCase):
         bot2 = MadnessBot()
         self.assertEqual(mock_voice_inst.generate_pcm.call_count, 0)
         self.assertIn(50, bot2.precached_volume_pcms["michael"])
-        self.assertEqual(bot2.precached_volume_pcms["michael"][50], b"pcm_michael_Volume 50")
+        self.assertEqual(bot2.precached_volume_pcms["michael"][50], "pcm_michael_Äänenvoimakkuus 50".encode("utf-8"))
 
     def test_play_ack_sound_fallback_to_chime(self):
         """Test play_ack_sound falls back to chime_pcm when fast responses are disabled."""

@@ -42,7 +42,7 @@ class TestSystemPromptNotBrief(unittest.TestCase):
     def test_system_prompt_contains_persona(self):
         prompt_lower = config.SYSTEM_PROMPT.lower()
         self.assertIn("obama", prompt_lower)
-        self.assertIn("butler", prompt_lower)
+        self.assertTrue("hovimestari" in prompt_lower or "butler" in prompt_lower)
 
 
 

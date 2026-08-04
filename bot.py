@@ -215,7 +215,7 @@ class MadnessBot:
 
             # 3. Volume Numbers (0..100)
             for level in range(0, 101):
-                phrase = f"Volume {level}"
+                phrase = f"Äänenvoimakkuus {level}"
                 file_path = os.path.join(v_vol_dir, f"{level}.pcm")
                 pcm = None
                 if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
@@ -686,7 +686,7 @@ class MadnessBot:
         if name == config.BOT_USERNAME or name in config.IGNORED_USERS: return
         new_ch = mods['channel_id']
         if new_ch == self.my_channel_id:
-             self.say_async(f"Welcome {name}", user=name)
+             self.say_async(f"Tervetuloa {name}", user=name)
 
     def get_status(self):
         """Returns a status report of the bot's components."""
