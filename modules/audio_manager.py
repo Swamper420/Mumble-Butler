@@ -3,6 +3,7 @@ import time
 import queue
 import numpy as np
 from modules.audio_buffer import UserVoiceStream
+from utils import resample_int16
 import config
 
 class AudioManager:
@@ -51,8 +52,6 @@ class AudioManager:
                 stream.pending_wakeword_chunks -= 1
                 return
 
-        from utils import resample_int16
-        
         # Downsample incoming 48kHz audio to 16kHz directly in int16
         audio_int16 = np.frombuffer(pcm_data, dtype=np.int16)
         audio_16k_bytes = resample_int16(audio_int16, 48000, 16000).tobytes()

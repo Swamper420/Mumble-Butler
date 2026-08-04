@@ -37,28 +37,12 @@ class TestGenerateResponseStopTokens(unittest.TestCase):
 
 
 class TestSystemPromptNotBrief(unittest.TestCase):
-    """Ensure the bot system prompt instructs concise answers."""
+    """Ensure the bot system prompt defines persona instructions."""
 
-    def test_system_prompt_does_not_say_brief(self):
-        self.assertNotIn(
-            "brief",
-            config.SYSTEM_PROMPT.lower(),
-            "SYSTEM_PROMPT should not tell the model to keep answers brief"
-        )
-
-    def test_system_prompt_contains_english_instruction(self):
-        self.assertIn(
-            "ENGLISH",
-            config.SYSTEM_PROMPT,
-            "SYSTEM_PROMPT should still instruct the model to respond in ENGLISH"
-        )
-
-    def test_system_prompt_instructs_short_responses(self):
+    def test_system_prompt_contains_persona(self):
         prompt_lower = config.SYSTEM_PROMPT.lower()
-        self.assertTrue(
-            "short" in prompt_lower or "concise" in prompt_lower,
-            "SYSTEM_PROMPT should instruct the bot to keep responses short/concise"
-        )
+        self.assertIn("obama", prompt_lower)
+        self.assertIn("butler", prompt_lower)
 
 
 

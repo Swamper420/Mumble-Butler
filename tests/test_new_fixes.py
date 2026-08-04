@@ -89,7 +89,7 @@ class TestNewFixes(unittest.TestCase):
         self.assertEqual(len(source), 1280)
         self.assertEqual(len(target), 426)
 
-    def test_qwen_auto_detection_and_no_think(self):
+    def test_model_no_think_formatting(self):
         from modules.brain import Brain
         from unittest.mock import patch
         

@@ -3,6 +3,9 @@ import subprocess
 import time
 import signal
 import re
+import hashlib
+import string
+import random
 from datetime import datetime, timedelta
 import asyncio
 import threading
@@ -137,7 +140,6 @@ class MadnessBot:
 
     def _precache_fast_audio_responses(self):
         """Generates or loads precached fast audio responses (wakewords, action confirmations, volume numbers) for all available voices."""
-        import hashlib
         self.precached_wakeword_pcms = {}
         self.precached_action_pcms = {}
         self.precached_volume_pcms = {}
@@ -500,11 +502,6 @@ class MadnessBot:
         self.loop.call_soon_threadsafe(_schedule)
 
     async def _async_saysave(self, text, user):
-        import re
-        import string
-        import random
-        from datetime import datetime
-
         cleaned = text.replace("\\n", " ").replace("/n", " ").replace("\\t", " ").replace("/t", " ")
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         if not cleaned:
@@ -616,7 +613,6 @@ class MadnessBot:
 
     async def _generate_and_play_tts(self, speech_generation, sentence, user):
         if self.mumble and self.mumble.sound_output:
-            import re
             # Clean up literal formatting codes to prevent TTS from attempting to read them aloud
             cleaned_sentence = sentence.replace("\\n", " ").replace("/n", " ").replace("\\t", " ").replace("/t", " ")
             cleaned_sentence = re.sub(r'\s+', ' ', cleaned_sentence).strip()

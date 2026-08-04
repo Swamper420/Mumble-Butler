@@ -5,7 +5,6 @@ import requests
 import config
 
 logger = logging.getLogger("Ear")
-STT_AVAILABLE = True
 
 class Ear:
     def __init__(self, api_url: str = None):
@@ -77,7 +76,3 @@ class Ear:
             logger.warning(f"STT API health check failed: {e}")
 
         return {"status": "error", "error": f"Failed to reach health endpoint on {self.api_url}"}
-
-
-
-

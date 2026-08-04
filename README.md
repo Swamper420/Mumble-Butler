@@ -83,7 +83,7 @@ main.py → MadnessBot (bot.py)
 
 ### TTS Voices
 
-Custom voice reference WAV files stored in `data/voices/` (e.g. `michael.wav` *default*)
+Dynamic voice IDs fetched via external TTS REST API (`GET /api/v1/voices`). Switch active voice using `?voice <name>`.
 
 ## Configuration
 

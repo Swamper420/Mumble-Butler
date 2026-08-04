@@ -70,11 +70,6 @@ TTS_RESPONSE_FORMAT = os.getenv("TTS_RESPONSE_FORMAT", "wav")
 TTS_SEED = int(os.getenv("TTS_SEED", "42"))
 TTS_TIMEOUT = int(os.getenv("TTS_TIMEOUT", "30"))
 
-
-
-
-
-
 # --- FAST PRECACHED AUDIO RESPONSES (EXPERIMENTAL) ---
 FAST_AUDIO_RESPONSES_ENABLED = os.getenv("FAST_AUDIO_RESPONSES_ENABLED", "False").lower() == "true"
 FAST_AUDIO_CACHE_DIR = os.getenv("FAST_AUDIO_CACHE_DIR", "data/precached_audio")
@@ -160,5 +155,3 @@ MUSIC_HISTORY_FILE = os.getenv("MUSIC_HISTORY_FILE", "data/music_history.json")
 RECOMMENDER_MAX_HISTORY = int(os.getenv("RECOMMENDER_MAX_HISTORY", "50"))
 RECOMMENDER_ITUNES_LIMIT = int(os.getenv("RECOMMENDER_ITUNES_LIMIT", "3"))
 RECOMMENDER_ITUNES_TIMEOUT = int(os.getenv("RECOMMENDER_ITUNES_TIMEOUT", "5"))
-
-

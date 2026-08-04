@@ -1,3 +1,4 @@
+import re
 import config
 
 
@@ -102,7 +103,6 @@ class TextHandler:
                 self.bot.send_chat("<b>Usage:</b> ?saysave &lt;text&gt;")
 
         elif cmd == config.TEXT_TRIGGERS['REMIND']:
-            import re
             match = re.search(
                 r"^(?:in\s+)?(\d+)\s+(second|minute|hour)s?(?:\s+(?:about|to))?\s+(.+)",
                 arg.strip(),
