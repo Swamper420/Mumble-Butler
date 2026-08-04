@@ -54,18 +54,7 @@ class Brain:
 
 
 
-    def _strip_thinking(self, text: str) -> str:
-        """Remove <think>...</think> blocks from LLM output."""
-        if getattr(config, 'LLM_DISABLE_THINKING', False):
-            text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-        return text.strip()
 
-    def _format_user_prompt(self, user_prompt: str) -> str:
-        """Append /no_think suffix when thinking is disabled and using a Gemma 3 model."""
-        model_setting = getattr(config, 'OLLAMA_MODEL', '').lower()
-        if getattr(config, 'LLM_DISABLE_THINKING', False) and 'gemma-3' in model_setting:
-            return f"{user_prompt} /no_think"
-        return user_prompt
 
     def _chat_completion(self, messages, max_tokens=None, temperature=None, stop=None):
         """Send chat completion request to Ollama API or handle test mocks."""
@@ -86,8 +75,7 @@ class Brain:
         if callable(self.llm):
             return self.llm(messages=messages, max_tokens=max_tokens)
 
-        think_buffer = getattr(config, 'OLLAMA_THINK_BUFFER', 1024)
-        num_predict = max_tokens + think_buffer if think_buffer else max_tokens
+        num_predict = max_tokens
 
         host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
         url = f"{host}/api/chat"
@@ -136,13 +124,12 @@ class Brain:
 
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
-        no_think_instruction = " ÄLÄ tulosta ajattelulohkoja, <think>-tageja tai sisäistä päättelyä. Vastaa suoraan ilman niitä suomeksi." if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
 
         web_context = self._build_search_context(user_prompt, search_context)
         if web_context:
-            full_system = f"{base_system}{no_think_instruction}\nKonteksti: Kello on {now}.\n\n{web_context}"
+            full_system = f"{base_system}\nKonteksti: Kello on {now}.\n\n{web_context}"
         else:
-            full_system = f"{base_system}{no_think_instruction}\nKonteksti: Kello on {now}."
+            full_system = f"{base_system}\nKonteksti: Kello on {now}."
 
         messages = [
             {"role": "system", "content": full_system}
@@ -152,8 +139,7 @@ class Brain:
                 for msg in self.history:
                     messages.append({"role": msg["role"], "content": msg["content"]})
 
-        formatted_prompt = self._format_user_prompt(user_prompt)
-        messages.append({"role": "user", "content": formatted_prompt})
+        messages.append({"role": "user", "content": user_prompt})
 
         try:
             output = self._chat_completion(
@@ -166,7 +152,6 @@ class Brain:
             # Clean tags
             for t in ["<|im_start|>", "<|im_end|>", "<start_of_turn>", "<end_of_turn>"]:
                 text = text.replace(t, "")
-            text = self._strip_thinking(text)
             response = text.strip().replace('"', '').replace("Obama:", "")
 
             self._update_history(user_prompt, response)
@@ -184,13 +169,12 @@ class Brain:
 
         now = datetime.now().strftime('%H:%M')
         base_system = self.dynamic_prompt or config.SYSTEM_PROMPT
-        no_think_instruction = " ÄLÄ tulosta ajattelulohkoja, <think>-tageja tai sisäistä päättelyä. Vastaa suoraan ilman niitä suomeksi." if getattr(config, 'LLM_DISABLE_THINKING', False) else ""
 
         web_context = self._build_search_context(user_prompt, search_context)
         if web_context:
-            full_system = f"{base_system}{no_think_instruction}\nKonteksti: Kello on {now}.\n\n{web_context}"
+            full_system = f"{base_system}\nKonteksti: Kello on {now}.\n\n{web_context}"
         else:
-            full_system = f"{base_system}{no_think_instruction}\nKonteksti: Kello on {now}."
+            full_system = f"{base_system}\nKonteksti: Kello on {now}."
 
         messages = [
             {"role": "system", "content": full_system}
@@ -200,12 +184,10 @@ class Brain:
                 for msg in self.history:
                     messages.append({"role": msg["role"], "content": msg["content"]})
 
-        formatted_prompt = self._format_user_prompt(user_prompt)
-        messages.append({"role": "user", "content": formatted_prompt})
+        messages.append({"role": "user", "content": user_prompt})
 
         try:
             complete_response = ""
-            in_think_block = False
 
             if hasattr(self.llm, 'create_chat_completion'):
                 output = self.llm.create_chat_completion(
@@ -227,21 +209,9 @@ class Brain:
                     token = token.replace("Obama:", "")
                     if token:
                         complete_response += token
-                        if getattr(config, 'LLM_DISABLE_THINKING', False):
-                            if '<think>' in complete_response and not in_think_block:
-                                in_think_block = True
-                            if in_think_block:
-                                if '</think>' in complete_response:
-                                    in_think_block = False
-                                    after_think = complete_response.split('</think>', 1)[-1]
-                                    if after_think:
-                                        yield after_think
-                                        complete_response = after_think
-                                continue
                         yield token
             else:
-                think_buffer = getattr(config, 'OLLAMA_THINK_BUFFER', 1024)
-                num_predict = max_tokens + think_buffer if think_buffer else max_tokens
+                num_predict = max_tokens
 
                 host = getattr(config, 'OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
                 url = f"{host}/api/chat"
@@ -267,7 +237,6 @@ class Brain:
                 response = (self.session or requests).post(url, json=payload, stream=True, timeout=timeout)
                 response.raise_for_status()
 
-                yielded_any = False
                 for line in response.iter_lines():
                     if not line:
                         continue
@@ -283,29 +252,9 @@ class Brain:
                     token = token.replace("Obama:", "")
                     if token:
                         complete_response += token
-                        if getattr(config, 'LLM_DISABLE_THINKING', False):
-                            if '<think>' in complete_response and not in_think_block:
-                                in_think_block = True
-                            if in_think_block:
-                                if '</think>' in complete_response:
-                                    in_think_block = False
-                                    after_think = complete_response.split('</think>', 1)[-1]
-                                    if after_think:
-                                        yielded_any = True
-                                        yield after_think
-                                        complete_response = after_think
-                                continue
-                        yielded_any = True
                         yield token
 
-                # Fallback: If thinking ate all tokens or stream ended inside thinking block,
-                # yield stripped content if nothing was yielded so the bot is never silent!
-                if not yielded_any and complete_response:
-                    fallback = self._strip_thinking(complete_response)
-                    if fallback:
-                        yield fallback
-
-            final = self._strip_thinking(complete_response).strip().replace('"', '')
+            final = complete_response.strip().replace('"', '')
             self._update_history(user_prompt, final)
         except Exception as e:
             yield f"Virhe ajattelussa: {e}"
@@ -445,7 +394,7 @@ class Brain:
                 temperature=0.7
             )
 
-            llm_text = self._strip_thinking(output['choices'][0]['message']['content'].strip())
+            llm_text = output['choices'][0]['message']['content'].strip()
             intent, vibe, recommendations = self.parse_recommendation_output(llm_text)
             
             print(f"🎵 Recommendation Intent: {intent}, Vibe: {vibe}")
@@ -503,7 +452,7 @@ class Brain:
                 messages=messages,
                 max_tokens=350
             )
-            return self._strip_thinking(output['choices'][0]['message']['content'].strip().replace('"', ''))
+            return output['choices'][0]['message']['content'].strip().replace('"', '')
         except Exception as e:
             print(f"Report generation error: {e}")
             return f"Kello on {now}. Tilannetta ei voida arvioida käsittelyvirheen vuoksi."

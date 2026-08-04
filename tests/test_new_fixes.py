@@ -89,22 +89,5 @@ class TestNewFixes(unittest.TestCase):
         self.assertEqual(len(source), 1280)
         self.assertEqual(len(target), 426)
 
-    def test_model_no_think_formatting(self):
-        from modules.brain import Brain
-        from unittest.mock import patch
-        
-        with patch('modules.brain.LLM_AVAILABLE', False):
-            brain = Brain()
-            
-            with patch('config.OLLAMA_MODEL', 'qwen3.5-1.7b-instruct'):
-                with patch('config.LLM_DISABLE_THINKING', True):
-                    prompt = brain._format_user_prompt("hello")
-                    self.assertEqual(prompt, "hello")
-        
-            with patch('config.OLLAMA_MODEL', 'gemma-3-4b'):
-                with patch('config.LLM_DISABLE_THINKING', True):
-                    prompt = brain._format_user_prompt("hello")
-                    self.assertEqual(prompt, "hello /no_think")
-
 if __name__ == "__main__":
     unittest.main()
