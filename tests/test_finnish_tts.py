@@ -9,7 +9,6 @@ from modules.voice import Voice
 class TestFinnishTTS(unittest.TestCase):
     def test_config_tts_defaults(self):
         self.assertEqual(config.TTS_API_URL, "http://localhost:8000")
-        self.assertEqual(config.TTS_MODEL, "omnivoice")
         self.assertEqual(config.TTS_VOICE, "mieto_fi")
         self.assertEqual(config.TTS_LANGUAGE, "fi")
         self.assertEqual(config.TTS_SPEED, 1.0)

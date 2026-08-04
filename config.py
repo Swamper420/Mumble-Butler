@@ -60,7 +60,6 @@ SHUTUP_KEYWORDS = os.getenv("SHUTUP_KEYWORDS", "shut up,shutup,be quiet").split(
 
 # --- TTS API CONFIG ---
 TTS_API_URL = os.getenv("TTS_API_URL", "http://localhost:8000")
-TTS_MODEL = os.getenv("TTS_MODEL", "omnivoice")
 TTS_VOICE = os.getenv("TTS_VOICE", "mieto_fi")
 TTS_LANGUAGE = os.getenv("TTS_LANGUAGE", "fi")
 TTS_SPEED = float(os.getenv("TTS_SPEED", "1.0"))
@@ -102,6 +101,7 @@ VOICE_TRIGGERS = {
     'RECOMMEND': ["recommend"],
     'SEARCH': ["search", "google", "look up"],
     'STOP': ["stop", "silence"],
+    'RESUME': ["resume"],
     'SKIP': ["skip", "next"],
     'PLAY_FILE': ["file"],
     'REPEAT': ["repeat"],

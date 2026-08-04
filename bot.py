@@ -427,6 +427,9 @@ class MadnessBot:
 
     async def hourly_report_worker(self):
         """Announces status every hour."""
+        if not getattr(config, 'HOURLY_REPORT_ENABLED', True):
+            self.logger.info("🕒 Hourly reporter disabled by config.")
+            return
         self.logger.info("🕒 Hourly reporter started.")
         now = datetime.now()
         next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
