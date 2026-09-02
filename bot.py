@@ -344,9 +344,19 @@ class MadnessBot:
                 self.mumble.start()
                 self.mumble.is_ready()
 
+                # Clamp outgoing audio bandwidth to prevent oversized Opus frames
+                bandwidth = getattr(config, "MUMBLE_BANDWIDTH", 64000)
+                try:
+                    self.mumble.set_bandwidth(bandwidth)
+                except Exception as e:
+                    self.logger.warning(f"Could not set bandwidth: {e}")
+
                 channel = self.mumble.channels.find_by_name(config.TARGET_CHANNEL)
                 if channel:
                     channel.move_in()
+                    self.logger.info(f"📍 Moved to channel: {config.TARGET_CHANNEL}")
+                else:
+                    self.logger.warning(f"⚠️ Target channel '{config.TARGET_CHANNEL}' not found. Bot is in root channel.")
 
                 self.logger.info("✅ Connected!")
 
@@ -404,8 +414,12 @@ class MadnessBot:
                     None
                 )
                 if pcm_data and speech_generation == self.speech_generation:
-                    try: self.mumble.sound_output.add_sound(pcm_data)
-                    except: pass
+                    try:
+                        self.mumble.sound_output.add_sound(pcm_data)
+                    except Exception as e:
+                        self.logger.error(f"Error sending sound to mumble: {e}")
+                elif not pcm_data:
+                    self.logger.warning(f"⚠️ No PCM audio generated for text: {text}")
             self.queue.task_done()
 
     async def audio_processing_worker(self):
