@@ -14,7 +14,7 @@
 
 - TS6 removed raw ServerQuery `:10011`. Only SSH query `:10022` + HTTP WebQuery remain.
 - ServerQuery is text/control only (chat, move, presence). It cannot send/receive voice audio.
-- No mature Python TS6-voice lib exists. Options: `honeybbq/teamspeak-js` (TS, `sendVoice(data,codec)`, `on("voice")`, Opus codecs 4/5) or `honeybbq/teamspeak-go`.
+- No mature Python TS6-voice lib exists. Options: `HoneyBBQ/teamspeak-js` repo (npm `@honeybbq/teamspeak-client`; TS, `sendVoice(data,codec)`, `on("voiceData")`, Opus codecs 4/5) or `honeybbq/teamspeak-go`.
 - Design: Python keeps all logic, speaks 48k mono s16le PCM. Node/Go sidecar is the TS voice client, piping PCM <-> Opus over localhost IPC.
 
 Background research:
@@ -22,7 +22,7 @@ Background research:
 - `atsq` (PyPI): asyncio TeamSpeak ServerQuery client for TS3+TS6 over SSH. Only dep `asyncssh`, requires Python >=3.12. Tested against `teamspeak:3.13` and `teamspeaksystems/teamspeak6-server` containers. API: `await atsq.connect(host, 10022, password=..., server_id=1)`, `client_list`, `channel_create`, `@client.on("cliententerview")`, `run_forever()` with backoff + keepalive. Handles `QueryError`, `FloodError id 524` (needs `query_ip_allowlist.txt`).
 - `tsbot` (PyPI, `jykob/TSBot`): async framework for TS ServerQuery bots, SSH default (`protocol='ssh'`), `TSBot(username, password, address)`, `@bot.command`, `@bot.on("cliententerview")`, auto-reconnect, rate-limiter.
 - `joshii-h/ts3-query-proxy`: raw `:10011` -> SSH `:10022` translation layer for legacy tools (e.g. TS3MusicBot). Useful reference, not used directly.
-- `honeybbq/teamspeak-js` + `teamspeak-go`: clean-room client-protocol libs (ECDH+RSA+EAX handshake). Support `sendVoice`, `on("voice")`, text messages, moves, file transfer. Only path to full voice without a real client binary + virtual cable.
+- `HoneyBBQ/teamspeak-js` (npm `@honeybbq/teamspeak-client`; bare `teamspeak-js` does NOT exist on npm — E404) + `teamspeak-go`: clean-room client-protocol libs (ECDH+RSA+EAX handshake). Support `sendVoice`, `on("voiceData")`, text messages, moves, file transfer. Only path to full voice without a real client binary + virtual cable.
 - `E2cD3s/Teamspeak-AI-Assistant`: reference for virtual-cable approach (TS client + VB-CABLE + local Whisper/TTS). Rejected here in favor of bridge sidecar for headless Linux.
 
 ## 2. New env vars (`config.py` + `.env.example`)
@@ -55,7 +55,7 @@ main.py -> MadnessBot (bot.py) -> self.backend: VoiceBackend
 ├── MumbleBackend (backends/mumble_backend.py) — extract current pymumble code
 └── TeamspeakBackend (backends/teamspeak_backend.py)
     ├── QueryClient (atsq + asyncssh, SSH :10022) — text/presence/move
-    └── BridgeSupervisor -> bridge/ts-voice-bridge/ (Node + teamspeak-js)
+    └── BridgeSupervisor -> bridge/ts-voice-bridge/ (Node + @honeybbq/teamspeak-client)
         RX: TS Opus -> decode -> 48k PCM -> UDP/TCP :5001 -> AudioManager.add_audio()
         TX: AudioManager/TTS 48k PCM -> :5002 -> encode Opus -> sendVoice()
 ```
@@ -101,8 +101,8 @@ Current Mumble coupling to abstract (see `bot.py`):
 
 ### Phase 2 — Voice bridge
 
-- [ ] Scaffold `bridge/ts-voice-bridge/package.json` (`teamspeak-js`, opus lib e.g. `@discordjs/opus` or `opusscript`), `index.js`, `README`.
-- [ ] Implement: connect as voice client (`identity, host:9987, nick, serverPassword, defaultChannel`), `clientMove`, `on("voice")` → Opus decode → 48k s16le → send to `TS6_BRIDGE_RX_PORT` (with `TS6_BRIDGE_TOKEN`); read `TS6_BRIDGE_TX_PORT` → Opus encode (codec 4/5 per server) → `sendVoice()`.
+- [ ] Scaffold `bridge/ts-voice-bridge/package.json` (`@honeybbq/teamspeak-client` — bare `teamspeak-js` is NOT on npm (E404), Node >= 20.19; opus lib e.g. `@discordjs/opus` or `opusscript`), `index.js`, `README`.
+- [ ] Implement: connect as voice client (`new Client(identity, host:9987, nick, { serverPassword, defaultChannel })`, `waitConnected()`), `on("voiceData")` ({clientId, codec, data} + clid→nick map) → Opus decode → 48k s16le → send to `TS6_BRIDGE_RX_PORT` (with `TS6_BRIDGE_TOKEN`); read `TS6_BRIDGE_TX_PORT` → Opus encode (codec 4/5 per server) → `sendVoice(data, codec)` (sync). Identity via `generateIdentity(8)` / `identityFromString()` / `toString()`.
 - [ ] Python `BridgeSupervisor`: spawn/supervise Node proc, health-check IPC sockets, restart on fail, expose `play_pcm()` / `on_audio()` with identical 48k PCM contract so `AudioManager`, `UserVoiceStream`, `Ear.transcribe`, `Voice.generate_pcm` need zero changes.
 - [ ] Handle: server/channel passwords, `TS6_IDENTITY` generate/store/upgrade, reconnect + re-join, `MUMBLE_BANDWIDTH` is Mumble-only (no-op on TS).
 

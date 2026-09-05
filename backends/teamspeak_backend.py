@@ -5,7 +5,7 @@ Architecture (see ts6plan.md)::
 
     MadnessBot -> TeamspeakBackend
     ├── QueryClient (SSH :10022) — text / presence / move
-    └── BridgeSupervisor -> bridge/ts-voice-bridge/ (Node + teamspeak-js)
+    └── BridgeSupervisor -> bridge/ts-voice-bridge/ (Node + @honeybbq/teamspeak-client)
         RX: TS Opus -> decode -> 48k PCM -> UDP :5001 -> AudioManager.add_audio()
         TX: AudioManager/TTS 48k PCM -> UDP :5002 -> encode Opus -> sendVoice()
 
@@ -14,7 +14,9 @@ AudioManager / UserVoiceStream / Ear / Voice need zero changes.
 
 Query docs: TS6 removed raw :10011. Only SSH :10022 + HTTP WebQuery remain.
 ServerQuery is text/control only — it cannot carry voice. Voice goes via
-the bridge sidecar (honeybbq/teamspeak-js sendVoice/on("voice"), Opus 4/5).
+the bridge sidecar (HoneyBBQ/teamspeak-js repo, npm
+@honeybbq/teamspeak-client: sendVoice(data, codec) / on("voiceData"),
+Opus 4/5).
 
 Query setup on the server:
   TSSERVER_QUERY_SSH_ENABLED=1
@@ -726,7 +728,7 @@ class QueryClient:
 
 
 # ---------------------------------------------------------------------------
-# BridgeSupervisor — Node sidecar (teamspeak-js) for full voice
+# BridgeSupervisor — Node sidecar (@honeybbq/teamspeak-client) for full voice
 # ---------------------------------------------------------------------------
 
 def build_rx_packet(username, pcm_bytes, token=""):

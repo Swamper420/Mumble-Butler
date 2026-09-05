@@ -6,10 +6,10 @@
  * identical 48 kHz mono s16le contract as Mumble.
  *
  * Directions:
- *   RX: TS on("voice") Opus -> decode -> 48k s16le PCM -> UDP 127.0.0.1:5001
+ *   RX: TS voiceData Opus -> decode -> 48k s16le PCM -> UDP 127.0.0.1:5001
  *       datagram = [TOKEN + "|" if set] + [name_len:1][name utf8][pcm]
  *   TX: UDP 127.0.0.1:5002 datagrams (raw PCM, optionally TOKEN-prefixed)
- *       -> Opus encode (codec 4/5 per server) -> sendVoice()
+ *       -> Opus encode (codec 4/5 per server) -> sendVoice(data, codec)
  *
  * Env (mirrors config.py TS6_*):
  *   TS6_VOICE_HOST (default 127.0.0.1), TS6_VOICE_PORT (9987),
@@ -17,7 +17,8 @@
  *   TS6_IDENTITY (empty = generate + print for reuse),
  *   TS6_BRIDGE_RX_PORT (5001), TS6_BRIDGE_TX_PORT (5002), TS6_BRIDGE_TOKEN
  *
- * Requires: npm install (teamspeak-js + @discordjs/opus, opusscript fallback).
+ * Requires: npm install (@honeybbq/teamspeak-client + @discordjs/opus,
+ * opusscript fallback). Needs Node.js >= 20.19.
  */
 'use strict';
 
@@ -29,7 +30,7 @@ const NICK = process.env.TS6_NICKNAME || process.env.MUMBLE_BOT_USERNAME || 'Oba
 const SERVER_PASSWORD = process.env.TS6_SERVER_PASSWORD || '';
 const CHANNEL = process.env.TS6_CHANNEL || process.env.MUMBLE_TARGET_CHANNEL || 'General';
 const CHANNEL_PASSWORD = process.env.TS6_CHANNEL_PASSWORD || '';
-let IDENTITY = process.env.TS6_IDENTITY || '';
+const IDENTITY_STR = process.env.TS6_IDENTITY || '';
 const RX_PORT = parseInt(process.env.TS6_BRIDGE_RX_PORT || '5001', 10);
 const TX_PORT = parseInt(process.env.TS6_BRIDGE_TX_PORT || '5002', 10);
 const TOKEN = process.env.TS6_BRIDGE_TOKEN || '';
@@ -131,8 +132,21 @@ const rxSocket = dgram.createSocket('udp4'); // we only SEND on this (to Python 
 const txSocket = dgram.createSocket('udp4'); // we RECEIVE on this (from Python :5002)
 
 let txBuffer = Buffer.alloc(0);
+let client = null;
+let negotiatedCodec = 5; // Opus Voice; falls back to 4 (Opus Music) when needed.
+function currentCodec() {
+  return negotiatedCodec;
+}
 
-txSocket.on('message', async (msg) => {
+// clid -> nickname for RX framing (voiceData only carries clientId).
+const nickByClid = new Map();
+function nameForClid(clid) {
+  const nick = nickByClid.get(clid);
+  if (nick) return String(nick);
+  return `clid_${clid}`;
+}
+
+txSocket.on('message', (msg) => {
   const pcm = parseTx(msg);
   if (!pcm) return;
   txBuffer = Buffer.concat([txBuffer, pcm]);
@@ -144,9 +158,8 @@ txSocket.on('message', async (msg) => {
     if (opus && client) {
       try {
         // Codec 4 (music) vs 5 (voice) is negotiated per server; prefer voice.
-        if (typeof client.sendVoice === 'function') {
-          await client.sendVoice(opus, currentCodec());
-        }
+        // NOTE: sendVoice(data, codec) is sync in @honeybbq/teamspeak-client.
+        client.sendVoice(opus, currentCodec());
       } catch (e) {
         warn('sendVoice failed:', e.message);
       }
@@ -156,97 +169,137 @@ txSocket.on('message', async (msg) => {
 
 txSocket.on('error', (err) => warn('TX socket error:', err.message));
 
-// --- TeamSpeak client -----------------------------------------------------------
-let TeamSpeakClient = null;
+// --- TeamSpeak client (@honeybbq/teamspeak-client) ---------------------------
+// Correct npm package for HoneyBBQ/teamspeak-js is the scoped
+// `@honeybbq/teamspeak-client` (bare `teamspeak-js` does NOT exist on npm
+// and installs fail with E404). API: new Client(identity, addr, nick, opts),
+// client.connect() + waitConnected(), client.on("voiceData", ...),
+// client.sendVoice(data, codec), generateIdentity(level) /
+// identityFromString(str) / identity.toString().
+let TSClient = null;
+let generateIdentity = null;
+let identityFromString = null;
 try {
   // eslint-disable-next-line global-require, import/no-unresolved
-  const tsjs = require('teamspeak-js');
-  TeamSpeakClient = tsjs.TeamSpeak || tsjs.Client || tsjs.default || tsjs;
+  const tsmod = require('@honeybbq/teamspeak-client');
+  TSClient = tsmod.Client || tsmod.default || tsmod;
+  generateIdentity = tsmod.generateIdentity;
+  identityFromString = tsmod.identityFromString;
 } catch (e) {
-  warn('teamspeak-js not installed. Run `npm install` in bridge/ts-voice-bridge.');
+  warn('@honeybbq/teamspeak-client not installed. Run `npm install` in bridge/ts-voice-bridge.');
 }
 
-let client = null;
-let negotiatedCodec = 5; // Opus Voice; falls back to 4 (Opus Music) when needed.
-function currentCodec() {
-  return negotiatedCodec;
+function loadIdentity() {
+  if (IDENTITY_STR && identityFromString) {
+    try {
+      const id = identityFromString(IDENTITY_STR.trim());
+      log('Loaded TS identity from TS6_IDENTITY.');
+      return id;
+    } catch (e) {
+      warn('TS6_IDENTITY invalid, generating ephemeral identity:', e.message);
+    }
+  }
+  if (!generateIdentity) {
+    throw new Error('@honeybbq/teamspeak-client missing (no generateIdentity). Run `npm install`.');
+  }
+  log('TS6_IDENTITY empty — generating new identity (level 8). Save the printed value as TS6_IDENTITY to reuse it.');
+  const id = generateIdentity(8);
+  try {
+    const exported = typeof id.toString === 'function' ? id.toString() : String(id);
+    log('Generated TS identity (save as TS6_IDENTITY to reuse):', exported.slice(0, 32) + '...');
+  } catch (e) { /* non-fatal */ }
+  return id;
 }
 
 async function connectVoice() {
-  if (!TeamSpeakClient) {
-    warn('Cannot connect: teamspeak-js missing. Retrying in 10s (text-only mode continues).');
+  if (!TSClient) {
+    warn('Cannot connect: @honeybbq/teamspeak-client missing. Retrying in 10s (text-only mode continues).');
     setTimeout(connectVoice, 10000);
     return;
   }
-  if (!IDENTITY) {
-    log('TS6_IDENTITY empty — generating ephemeral identity. Set TS6_IDENTITY to reuse it.');
-  }
-  const opts = {
-    host: HOST,
-    port: PORT,
-    nickname: NICK,
-    identity: IDENTITY || undefined,
-    serverPassword: SERVER_PASSWORD || undefined,
-    defaultChannel: CHANNEL || undefined,
-    defaultChannelPassword: CHANNEL_PASSWORD || undefined,
-  };
-  log(`Connecting voice as ${NICK} to ${HOST}:${PORT} channel=${CHANNEL || '(default)'} ...`);
+  const addr = `${HOST}:${PORT}`;
+  log(`Connecting voice as ${NICK} to ${addr} channel=${CHANNEL || '(default)'} ...`);
   try {
-    client = new TeamSpeakClient(opts);
-    if (typeof client.connect === 'function') await client.connect();
-    else if (typeof client.start === 'function') await client.start();
+    const identity = loadIdentity();
+    client = new TSClient(identity, addr, NICK, {
+      serverPassword: SERVER_PASSWORD || undefined,
+      defaultChannel: CHANNEL || undefined,
+      defaultChannelPassword: CHANNEL_PASSWORD || undefined,
+    });
 
-    // Persist generated identity for reuse (avoids security-level blocks).
-    try {
-      const id = client.identity || client.getIdentity?.();
-      if (id && !IDENTITY) {
-        IDENTITY = typeof id === 'string' ? id : JSON.stringify(id);
-        log('Generated TS identity (save as TS6_IDENTITY to reuse):', IDENTITY.slice(0, 32) + '...');
-      }
-    } catch (e) { /* non-fatal */ }
-
-    // Negotiate Opus codec: prefer voice (5), accept music (4).
-    try {
-      const codec = client.codec ?? client.voiceCodec ?? 5;
-      if (codec === 4 || codec === 5) negotiatedCodec = codec;
-      log(`Voice codec: Opus ${negotiatedCodec === 4 ? 'Music (4)' : 'Voice (5)'}.`);
-    } catch (e) { /* keep default */ }
-
-    // Join target channel when the API exposes moves.
-    try {
-      if (CHANNEL && typeof client.moveToChannel === 'function') await client.moveToChannel(CHANNEL);
-      else if (CHANNEL && typeof client.clientMove === 'function') await client.clientMove({ channel: CHANNEL });
-    } catch (e) {
-      warn('Channel move failed (will retry on reconnect):', e.message);
-    }
-
-    client.on?.('voice', (event) => {
+    client.on('connected', () => {
       try {
-        // teamspeak-js voice event shapes vary: {client, opus, codec} or raw buffer.
-        const opus = event?.opus ?? event?.data ?? event?.packet ?? event;
-        const name = event?.client?.nickname ?? event?.invokername ?? event?.nickname ?? 'unknown';
-        if (!Buffer.isBuffer(opus)) return;
-        const pcm = decodeOpus(opus);
+        log(`Voice connected (clid=${client.clientID?.() ?? '?'}).`);
+      } catch (e) {
+        log('Voice connected.');
+      }
+    });
+
+    // Keep clid -> nickname map for RX framing.
+    client.on('clientEnter', (info) => {
+      try {
+        if (info && typeof info.id === 'number' && info.nickname) {
+          nickByClid.set(info.id, info.nickname);
+        }
+      } catch (e) { /* non-fatal */ }
+    });
+    client.on('clientLeave', (evt) => {
+      try {
+        if (evt && typeof evt.id === 'number') nickByClid.delete(evt.id);
+      } catch (e) { /* non-fatal */ }
+    });
+    client.on('clientMoved', () => { /* channel tracking not needed for voice */ });
+
+    // Incoming voice: { clientId, codec, data } — decode Opus -> PCM -> Python.
+    client.on('voiceData', (event) => {
+      try {
+        const opus = event?.data;
+        const clid = event?.clientId;
+        if (!Buffer.isBuffer(opus) && !(opus instanceof Uint8Array)) return;
+        if (typeof event?.codec === 'number' && (event.codec === 4 || event.codec === 5)) {
+          negotiatedCodec = event.codec;
+        }
+        const pcm = decodeOpus(Buffer.from(opus));
         if (!pcm) return;
-        const datagram = frameRx(String(name), pcm);
+        const datagram = frameRx(nameForClid(clid), pcm);
         rxSocket.send(datagram, RX_PORT, '127.0.0.1', (err) => {
           if (err) warn('RX send failed:', err.message);
         });
       } catch (e) {
-        warn('voice handler error:', e.message);
+        warn('voiceData handler error:', e.message);
       }
     });
 
-    client.on?.('close', () => {
-      warn('Voice connection closed. Reconnecting in 5s...');
+    client.on('disconnected', (err) => {
+      warn('Voice connection closed:', err?.message ?? 'clean', 'Reconnecting in 5s...');
       client = null;
       setTimeout(connectVoice, 5000);
     });
-    client.on?.('error', (err) => warn('Voice client error:', err?.message ?? err));
 
+    await client.connect();
+    // Wait until handshake completes (15 s timeout).
+    if (typeof client.waitConnected === 'function') {
+      await client.waitConnected(AbortSignal.timeout(15_000));
+    }
+
+    // Seed nickname map so RX frames carry real names from the start.
+    try {
+      const { listClients } = require('@honeybbq/teamspeak-client');
+      if (typeof listClients === 'function') {
+        const clients = await listClients(client);
+        for (const c of clients || []) {
+          if (c && typeof c.id === 'number' && c.nickname) nickByClid.set(c.id, c.nickname);
+        }
+      }
+    } catch (e) { /* optional; nicknames fall back to clid_N */ }
+
+    log(`Voice codec: Opus ${negotiatedCodec === 4 ? 'Music (4)' : 'Voice (5)'}.`);
     log('Voice connected.');
   } catch (e) {
     warn('Voice connect failed:', e.message, '— retrying in 5s.');
+    try {
+      if (client && typeof client.disconnect === 'function') await client.disconnect();
+    } catch (e2) { /* ignore */ }
     client = null;
     setTimeout(connectVoice, 5000);
   }

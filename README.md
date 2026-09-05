@@ -39,7 +39,7 @@ main.py → MadnessBot (bot.py) → self.backend: VoiceBackend
 ├── MumbleBackend (backends/mumble_backend.py) — pymumble voice + text (default)
 └── TeamspeakBackend (backends/teamspeak_backend.py) — USE_TEAMSPEAK=true
     ├── QueryClient (SSH :10022) — text / presence / move
-    └── BridgeSupervisor → bridge/ts-voice-bridge/ (Node + teamspeak-js)
+    └── BridgeSupervisor → bridge/ts-voice-bridge/ (Node + @honeybbq/teamspeak-client)
         RX: TS Opus → 48k PCM → UDP :5001 → AudioManager.add_audio()
         TX: TTS 48k PCM → UDP :5002 → Opus → sendVoice()
 ├── Brain         — LLM inference, memory, music recommendations
@@ -197,7 +197,7 @@ TSSERVER_QUERY_ADMIN_PASSWORD=<== TS6_QUERY_PASSWORD>
 Voice bridge (see [bridge/ts-voice-bridge/README.md](bridge/ts-voice-bridge/README.md)):
 
 ```bash
-cd bridge/ts-voice-bridge && npm install   # teamspeak-js + @discordjs/opus
+cd bridge/ts-voice-bridge && npm install   # @honeybbq/teamspeak-client + @discordjs/opus (Node >= 20.19)
 # Python BridgeSupervisor spawns `node index.js` automatically.
 ```
 

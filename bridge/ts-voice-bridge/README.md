@@ -26,9 +26,12 @@ cd bridge/ts-voice-bridge
 npm install
 ```
 
-Needs `teamspeak-js` plus an Opus lib (`@discordjs/opus` preferred,
-`opusscript` fallback). Opus codec 4 (Music) vs 5 (Voice) is auto-selected;
-voice (5) is preferred.
+Needs `@honeybbq/teamspeak-client` (the npm name for
+[HoneyBBQ/teamspeak-js](https://github.com/HoneyBBQ/teamspeak-js) — bare
+`teamspeak-js` does **not** exist on npm and fails with E404) plus an Opus lib
+(`@discordjs/opus` preferred, `opusscript` fallback). Requires Node.js
+>= 20.19. Opus codec 4 (Music) vs 5 (Voice) is auto-selected from incoming
+`voiceData`; voice (5) is preferred.
 
 ## Configure
 
