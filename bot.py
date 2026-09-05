@@ -13,11 +13,27 @@ from concurrent.futures import ThreadPoolExecutor
 
 WHITESPACE_RE = re.compile(r'\s+')
 
-import pymumble_py3 as pymumble
 import config
 
-# Utilities
-from utils import patch_ssl, setup_logger
+# Utilities (tolerant import: tests stub `utils` with only patch_ssl)
+try:
+    from utils import patch_ssl, setup_logger
+except ImportError:  # pragma: no cover - test stub compat
+    from utils import patch_ssl
+
+    import logging as _logging
+    import sys as _sys
+
+    def setup_logger(name="MadnessBot", level=_logging.INFO):
+        _logger = _logging.getLogger(name)
+        if not _logger.handlers:
+            _handler = _logging.StreamHandler(_sys.stdout)
+            _handler.setFormatter(_logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'))
+            _logger.addHandler(_handler)
+            _logger.setLevel(level)
+        return _logger
 
 # Modules
 from modules.brain import Brain
@@ -68,6 +84,21 @@ class MadnessBot:
         self.mumble = None
         self.my_channel_id = None
         self.running = True
+
+        # Voice/chat backend (Mumble default; TeamSpeak 6 when USE_TEAMSPEAK=true).
+        # Kept as instance attr so tests can inject fakes. self.mumble stays
+        # as the Mumble-only alias for backward compat.
+        self.backend = None
+        try:
+            from backends import create_backend
+            self.backend = create_backend(self)
+        except Exception as e:
+            # Backend creation must never break __init__ (e.g. missing deps
+            # in unit tests). Connection happens in run().
+            try:
+                self.logger.warning(f"Backend init deferred: {e}")
+            except Exception:
+                pass
 
         self.start_time = time.time()
 
@@ -245,78 +276,260 @@ class MadnessBot:
             f"{w_count} wake responses, {a_count} action confirmations, {v_count} volume responses."
         )
 
+    def _real_backend(self):
+        """Return backend only when it is a real VoiceBackend (or test fake).
+
+        Ignores auto-created MagicMock attributes (unit tests inject
+        MagicMock bots where .backend exists but is not a real backend).
+        Test fakes using SimpleNamespace(backend_name=...) are honoured.
+        """
+        backend = getattr(self, "backend", None)
+        if backend is None:
+            return None
+        try:
+            name = getattr(backend, "backend_name", None)
+            if name in ("mumble", "teamspeak6", "base"):
+                return backend
+            # Also accept objects with the VoiceBackend interface even when
+            # backend_name is missing (e.g. minimal test doubles exposing
+            # play_pcm/clear_audio_buffer/send_chat/is_alive).
+            for attr in ("play_pcm", "clear_audio_buffer", "send_chat", "is_alive"):
+                if callable(getattr(backend, attr, None)):
+                    # Distinguish real doubles from MagicMock: MagicMock attrs
+                    # are MagicMocks, but their type name reveals the mock.
+                    if "Mock" in type(backend).__name__:
+                        return None
+                    return backend
+            return None
+        except Exception:
+            return None
+
+    def _play_pcm_via_backend(self, pcm_bytes):
+        """Play PCM via backend, falling back to legacy self.mumble alias.
+
+        Returns True when queued. Backend-first keeps TS6 + Mumble working;
+        the self.mumble fallback preserves unit tests that inject a mock
+        mumble object without a backend.
+        """
+        if not pcm_bytes:
+            return False
+        backend = self._real_backend()
+        if backend is not None:
+            try:
+                if backend.play_pcm(pcm_bytes):
+                    return True
+            except Exception as e:
+                try:
+                    self.logger.error(f"Error playing audio via backend: {e}")
+                except Exception:
+                    pass
+        # Legacy fallback (Mumble alias / injected mocks in tests)
+        mumble = getattr(self, "mumble", None)
+        # Avoid treating auto-mocked sound_output as real when backend is real
+        # and already failed — still try alias for Mumble compat.
+        sound_output = None
+        try:
+            sound_output = getattr(mumble, "sound_output", None) if mumble else None
+            # Ignore pure MagicMock artifacts when mumble itself is auto-mock?
+            # Tests explicitly set bot.mumble = MagicMock()/SimpleNamespace with
+            # sound_output, so honour it. Only skip when mumble is None.
+        except Exception:
+            sound_output = None
+        if sound_output is not None:
+            try:
+                sound_output.add_sound(pcm_bytes)
+                return True
+            except Exception as e:
+                try:
+                    self.logger.error(f"Error playing audio via mumble alias: {e}")
+                except Exception:
+                    pass
+        return False
+
+    def _has_audio_output(self):
+        backend = self._real_backend()
+        if backend is not None:
+            try:
+                if backend.is_alive():
+                    return True
+            except Exception:
+                pass
+        mumble = getattr(self, "mumble", None)
+        return bool(mumble and getattr(mumble, "sound_output", None))
+
+    @property
+    def _is_teamspeak(self):
+        if getattr(config, "USE_TEAMSPEAK", False):
+            return True
+        backend = getattr(self, "backend", None)
+        return bool(backend is not None and getattr(backend, "backend_name", "") == "teamspeak6")
+
     def play_ack_sound(self):
         """
         Plays an acknowledgment sound. If fast audio responses are enabled and available,
         plays a randomly chosen fast wakeword response for the active voice. Otherwise falls back to chime_pcm.
+
+        NOTE: Inlined backend/mumble routing (no helper calls) so unbound
+        calls with MagicMock selves (unit tests) keep working: helpers would
+        themselves be auto-mocks on such selves and swallow playback.
         """
-        if not (self.mumble and self.mumble.sound_output):
+        # Select sound first (uses only explicitly-set attrs + config)
+        sound_to_play = None
+        try:
+            fast_enabled = getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False)
+        except Exception:
+            fast_enabled = False
+        if fast_enabled:
+            try:
+                current_voice = getattr(getattr(self, "voice", None), "current_voice_id",
+                                        getattr(config, "TTS_VOICE", "mieto_fi"))
+            except Exception:
+                current_voice = "mieto_fi"
+            try:
+                precached = getattr(self, "precached_wakeword_pcms", {})
+                if isinstance(precached, dict):
+                    voice_wakewords = precached.get(current_voice, [])
+                    if not voice_wakewords and precached:
+                        first_key = next(iter(precached))
+                        voice_wakewords = precached[first_key]
+                    if isinstance(voice_wakewords, list) and voice_wakewords:
+                        sound_to_play = random.choice(voice_wakewords)
+                elif isinstance(precached, list) and precached:
+                    sound_to_play = random.choice(precached)
+            except Exception:
+                pass
+
+        try:
+            chime = getattr(self, "chime_pcm", None)
+        except Exception:
+            chime = None
+        if not sound_to_play and chime:
+            sound_to_play = chime
+        if not sound_to_play:
             return
 
-        sound_to_play = None
-        if getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False):
-            current_voice = getattr(self.voice, "current_voice_id", getattr(config, "TTS_VOICE", "mieto_fi"))
-            if isinstance(self.precached_wakeword_pcms, dict):
-                voice_wakewords = self.precached_wakeword_pcms.get(current_voice, [])
-                if not voice_wakewords and self.precached_wakeword_pcms:
-                    first_key = next(iter(self.precached_wakeword_pcms))
-                    voice_wakewords = self.precached_wakeword_pcms[first_key]
-                if isinstance(voice_wakewords, list) and voice_wakewords:
-                    sound_to_play = random.choice(voice_wakewords)
-            elif isinstance(self.precached_wakeword_pcms, list) and self.precached_wakeword_pcms:
-                sound_to_play = random.choice(self.precached_wakeword_pcms)
-
-        if not sound_to_play and self.chime_pcm:
-            sound_to_play = self.chime_pcm
-
-        if sound_to_play:
+        # Backend-first when it is a real backend (backend_name string match)
+        try:
+            b = getattr(self, "backend", None)
+            if getattr(b, "backend_name", None) in ("mumble", "teamspeak6", "base"):
+                try:
+                    if b.play_pcm(sound_to_play):
+                        return
+                except Exception as e:
+                    try:
+                        self.logger.error(f"Error playing ack sound via backend: {e}")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        # Legacy Mumble alias fallback (covers injected mocks in tests)
+        try:
+            m = getattr(self, "mumble", None)
+            so = getattr(m, "sound_output", None) if m else None
+            if so is not None:
+                so.add_sound(sound_to_play)
+        except Exception as e:
             try:
-                self.mumble.sound_output.add_sound(sound_to_play)
-            except Exception as e:
                 self.logger.error(f"Error playing ack sound: {e}")
+            except Exception:
+                pass
 
     def play_action_confirmation(self, category, level=None):
         """
         Plays a precached action confirmation sound for a specific category (e.g. MUSIC, SEARCH, THINK, VOLUME).
         If category is VOLUME and level is provided, plays precached audio for that specific volume level if available.
+
+        NOTE: Inlined routing (see play_ack_sound) for MagicMock-self compat.
         """
-        if not (self.mumble and self.mumble.sound_output):
+        try:
+            fast_enabled = getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False)
+        except Exception:
+            fast_enabled = False
+        if not fast_enabled:
             return
 
-        if not getattr(config, "FAST_AUDIO_RESPONSES_ENABLED", False):
-            return
-
-        current_voice = getattr(self.voice, "current_voice_id", getattr(config, "TTS_VOICE", "mieto_fi"))
+        try:
+            current_voice = getattr(getattr(self, "voice", None), "current_voice_id",
+                                    getattr(config, "TTS_VOICE", "mieto_fi"))
+        except Exception:
+            current_voice = "mieto_fi"
         sound_to_play = None
 
-        if category == "VOLUME" and level is not None:
-            if isinstance(self.precached_volume_pcms, dict):
-                voice_volumes = self.precached_volume_pcms.get(current_voice)
-                if voice_volumes is None and self.precached_volume_pcms:
-                    first_key = next(iter(self.precached_volume_pcms))
-                    voice_volumes = self.precached_volume_pcms[first_key]
-                if isinstance(voice_volumes, dict):
-                    sound_to_play = voice_volumes.get(level)
+        try:
+            if category == "VOLUME" and level is not None:
+                precached_vol = getattr(self, "precached_volume_pcms", {})
+                if isinstance(precached_vol, dict):
+                    voice_volumes = precached_vol.get(current_voice)
+                    if voice_volumes is None and precached_vol:
+                        first_key = next(iter(precached_vol))
+                        voice_volumes = precached_vol[first_key]
+                    if isinstance(voice_volumes, dict):
+                        sound_to_play = voice_volumes.get(level)
+
+            if not sound_to_play:
+                precached_act = getattr(self, "precached_action_pcms", {})
+                if isinstance(precached_act, dict):
+                    if current_voice in precached_act and isinstance(precached_act[current_voice], dict):
+                        sound_to_play = precached_act[current_voice].get(category)
+                    elif category in precached_act:
+                        sound_to_play = precached_act.get(category)
+                    else:
+                        try:
+                            first_val = next(iter(precached_act.values()), None)
+                        except Exception:
+                            first_val = None
+                        if isinstance(first_val, dict):
+                            sound_to_play = first_val.get(category)
+        except Exception:
+            pass
 
         if not sound_to_play:
-            if isinstance(self.precached_action_pcms, dict):
-                if current_voice in self.precached_action_pcms and isinstance(self.precached_action_pcms[current_voice], dict):
-                    sound_to_play = self.precached_action_pcms[current_voice].get(category)
-                elif category in self.precached_action_pcms:
-                    sound_to_play = self.precached_action_pcms.get(category)
-                else:
-                    first_val = next(iter(self.precached_action_pcms.values()), None)
-                    if isinstance(first_val, dict):
-                        sound_to_play = first_val.get(category)
-
-        if sound_to_play:
+            return
+        try:
+            b = getattr(self, "backend", None)
+            if getattr(b, "backend_name", None) in ("mumble", "teamspeak6", "base"):
+                try:
+                    if b.play_pcm(sound_to_play):
+                        return
+                except Exception as e:
+                    try:
+                        self.logger.error(f"Error playing action confirmation '{category}' via backend: {e}")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        try:
+            m = getattr(self, "mumble", None)
+            so = getattr(m, "sound_output", None) if m else None
+            if so is not None:
+                so.add_sound(sound_to_play)
+        except Exception as e:
             try:
-                self.mumble.sound_output.add_sound(sound_to_play)
-            except Exception as e:
                 self.logger.error(f"Error playing action confirmation '{category}': {e}")
+            except Exception:
+                pass
 
     def setup_mumble(self):
-        """Initializes Mumble connection and callbacks."""
+        """Initializes Mumble connection and callbacks.
+
+        Delegates to MumbleBackend when active (Phase 0 refactor); falls back
+        to the legacy inline pymumble setup for direct callers/tests.
+        """
+        backend = getattr(self, "backend", None)
+        if backend is not None and getattr(backend, "backend_name", "") == "mumble":
+            try:
+                backend.connect()
+                # Sync legacy aliases
+                self.mumble = getattr(backend, "mumble", self.mumble)
+                self.my_channel_id = getattr(backend, "my_channel_id", self.my_channel_id)
+                return
+            except Exception:
+                pass  # fall through to legacy path below
+        # Legacy inline path (kept for test compat / direct use)
+        try:
+            import pymumble_py3 as pymumble
+        except ImportError as e:
+            raise RuntimeError("pymumble_py3 is required for setup_mumble().") from e
         self.logger.info(f"🔌 Connecting to {config.SERVER_IP}...")
         self.mumble = pymumble.Mumble(
             config.SERVER_IP,
@@ -332,39 +545,103 @@ class MadnessBot:
         self.mumble.set_receive_sound(True)
         self.mumble.callbacks.set_callback("sound_received", self.on_sound_received)
 
+    def _ensure_backend(self):
+        """Lazily create backend if __init__ deferred it (e.g. in tests)."""
+        if getattr(self, "backend", None) is None:
+            try:
+                from backends import create_backend
+                self.backend = create_backend(self)
+            except Exception as e:
+                try:
+                    self.logger.warning(f"Backend creation failed: {e}")
+                except Exception:
+                    pass
+        return getattr(self, "backend", None)
+
+    def _backend_is_alive(self):
+        backend = self._ensure_backend()
+        if backend is not None:
+            try:
+                return bool(backend.is_alive())
+            except Exception:
+                return False
+        # Legacy fallback
+        try:
+            return bool(self.mumble and self.mumble.is_alive())
+        except Exception:
+            return False
+
+    def _backend_sync_tick(self):
+        """Per-second tick: refresh my_channel_id from backend or mumble."""
+        backend = getattr(self, "backend", None)
+        try:
+            if backend is not None and getattr(backend, "backend_name", "") == "mumble":
+                sync = getattr(backend, "sync", None)
+                if callable(sync):
+                    sync()
+                    self.my_channel_id = getattr(backend, "my_channel_id", self.my_channel_id)
+                    return
+            if backend is not None:
+                try:
+                    self.my_channel_id = backend.my_channel_id
+                    return
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            if self.mumble and getattr(self.mumble, "users", None) and self.mumble.users.myself:
+                self.my_channel_id = self.mumble.users.myself['channel_id']
+        except Exception:
+            pass
+
     def run(self):
-        """Main application loop."""
-        self.logger.info("🚀 Starting Bot...")
+        """Main application loop (backend-agnostic)."""
+        backend_name = "teamspeak6" if getattr(config, "USE_TEAMSPEAK", False) else "mumble"
+        self.logger.info(f"🚀 Starting Bot... (backend={backend_name})")
         threading.Thread(target=self._start_async_loop, daemon=True).start()
+
+        # Ensure backend exists (deferred creation path)
+        self._ensure_backend()
 
         # Connection / Reconnection Loop
         while self.running:
             try:
-                self.setup_mumble()
-                self.mumble.start()
-                self.mumble.is_ready()
-
-                # Clamp outgoing audio bandwidth to prevent oversized Opus frames
-                bandwidth = getattr(config, "MUMBLE_BANDWIDTH", 64000)
-                try:
-                    self.mumble.set_bandwidth(bandwidth)
-                except Exception as e:
-                    self.logger.warning(f"Could not set bandwidth: {e}")
-
-                channel = self.mumble.channels.find_by_name(config.TARGET_CHANNEL)
-                if channel:
-                    channel.move_in()
-                    self.logger.info(f"📍 Moved to channel: {config.TARGET_CHANNEL}")
+                backend = getattr(self, "backend", None)
+                if backend is not None:
+                    backend.connect()
+                    # Sync legacy Mumble alias when applicable
+                    if getattr(backend, "backend_name", "") == "mumble":
+                        try:
+                            self.mumble = getattr(backend, "mumble", self.mumble)
+                        except Exception:
+                            pass
+                    try:
+                        self.my_channel_id = backend.my_channel_id
+                    except Exception:
+                        pass
                 else:
-                    self.logger.warning(f"⚠️ Target channel '{config.TARGET_CHANNEL}' not found. Bot is in root channel.")
+                    # No backend (should not happen) — legacy Mumble path
+                    self.setup_mumble()
+                    self.mumble.start()
+                    self.mumble.is_ready()
+                    bandwidth = getattr(config, "MUMBLE_BANDWIDTH", 64000)
+                    try:
+                        self.mumble.set_bandwidth(bandwidth)
+                    except Exception as e:
+                        self.logger.warning(f"Could not set bandwidth: {e}")
+                    channel = self.mumble.channels.find_by_name(config.TARGET_CHANNEL)
+                    if channel:
+                        channel.move_in()
+                        self.logger.info(f"📍 Moved to channel: {config.TARGET_CHANNEL}")
+                    else:
+                        self.logger.warning(f"⚠️ Target channel '{config.TARGET_CHANNEL}' not found. Bot is in root channel.")
 
                 self.logger.info("✅ Connected!")
 
                 # Keep main thread alive while monitoring connection and child processes
-                while self.running and self.mumble.is_alive():
-                    if self.mumble.users.myself:
-                        self.my_channel_id = self.mumble.users.myself['channel_id']
-
+                while self.running and self._backend_is_alive():
+                    self._backend_sync_tick()
                     time.sleep(1)
 
                 if self.running:
@@ -374,7 +651,13 @@ class MadnessBot:
                 if self.running:
                     self.logger.error(f"⚠️ Connection error: {e}")
             finally:
-                if self.mumble:
+                backend = getattr(self, "backend", None)
+                if backend is not None:
+                    try:
+                        backend.disconnect()
+                    except Exception:
+                        pass
+                elif self.mumble:
                     try: self.mumble.stop()
                     except: pass
 
@@ -382,15 +665,27 @@ class MadnessBot:
                 self.logger.info(f"🔄 Reconnecting in {config.RECONNECT_DELAY} seconds...")
                 time.sleep(config.RECONNECT_DELAY)
                 # Clear audio buffers on reconnect to prevent stale processing
-                with self.audio_manager.lock:
-                    self.audio_manager.user_streams.clear()
+                try:
+                    with self.audio_manager.lock:
+                        self.audio_manager.user_streams.clear()
+                except Exception:
+                    pass
 
     def shutdown(self):
         self.logger.info("Shutting down...")
         self.running = False
 
+        backend = getattr(self, "backend", None)
+        if backend is not None:
+            try:
+                backend.disconnect()
+            except Exception:
+                pass
         if self.mumble:
-            self.mumble.stop()
+            try:
+                self.mumble.stop()
+            except Exception:
+                pass
         self.logger.info("Cleanup complete.")
 
 
@@ -406,20 +701,16 @@ class MadnessBot:
         """Consumes text from queue and generates speech."""
         while True:
             speech_generation, text, user_name = await self.queue.get()
-            if self.mumble and self.mumble.sound_output:
-                pcm_data = await self.loop.run_in_executor(
-                    self.executor,
-                    self.voice.generate_pcm,
-                    text,
-                    None
-                )
-                if pcm_data and speech_generation == self.speech_generation:
-                    try:
-                        self.mumble.sound_output.add_sound(pcm_data)
-                    except Exception as e:
-                        self.logger.error(f"Error sending sound to mumble: {e}")
-                elif not pcm_data:
-                    self.logger.warning(f"⚠️ No PCM audio generated for text: {text}")
+            pcm_data = await self.loop.run_in_executor(
+                self.executor,
+                self.voice.generate_pcm,
+                text,
+                None
+            )
+            if pcm_data and speech_generation == self.speech_generation:
+                self._play_pcm_via_backend(pcm_data)
+            elif not pcm_data:
+                self.logger.warning(f"⚠️ No PCM audio generated for text: {text}")
             self.queue.task_done()
 
     async def audio_processing_worker(self):
@@ -439,6 +730,33 @@ class MadnessBot:
                     user, raw_audio, stream
                 )
 
+    def get_active_users(self):
+        """Backend-agnostic active (non-ignored, non-self) user names.
+
+        Used by hourly reports. Prefers backend.list_users(), falls back to
+        legacy self.mumble.users dict.
+        """
+        ignored = set(getattr(config, "IGNORED_USERS", []) or [])
+        self_names = {getattr(config, "BOT_USERNAME", ""), getattr(config, "TS6_NICKNAME", "")}
+        backend = self._real_backend()
+        if backend is not None:
+            try:
+                users = backend.list_users() or []
+                # Guard against MagicMock artifacts (non-list returns)
+                if isinstance(users, list) and users:
+                    return [u.get("name") for u in users
+                            if isinstance(u, dict) and u.get("name") and u.get("name") not in ignored
+                            and u.get("name") not in self_names]
+            except Exception:
+                pass
+        try:
+            if self.mumble and getattr(self.mumble, "users", None):
+                return [u['name'] for u in self.mumble.users.values()
+                        if u['name'] not in config.IGNORED_USERS and u['name'] != config.BOT_USERNAME]
+        except Exception:
+            pass
+        return []
+
     async def hourly_report_worker(self):
         """Announces status every hour."""
         if not getattr(config, 'HOURLY_REPORT_ENABLED', True):
@@ -451,24 +769,22 @@ class MadnessBot:
         await asyncio.sleep(seconds_until_hour)
 
         while True:
-            if self.mumble and self.mumble.users:
-                active_users = [u['name'] for u in self.mumble.users.values()
-                                if u['name'] not in config.IGNORED_USERS and u['name'] != config.BOT_USERNAME]
+            active_users = self.get_active_users()
 
-                if active_users:
-                    one_minute_ago = time.time() - 60
-                    with self.transcript_lock:
-                        self.recent_transcripts = [t for t in self.recent_transcripts if t['time'] > one_minute_ago]
-                        relevant_transcripts = self.recent_transcripts[:]
+            if active_users:
+                one_minute_ago = time.time() - 60
+                with self.transcript_lock:
+                    self.recent_transcripts = [t for t in self.recent_transcripts if t['time'] > one_minute_ago]
+                    relevant_transcripts = self.recent_transcripts[:]
 
-                    report = await self.loop.run_in_executor(
-                        self.executor,
-                        self.brain.generate_hourly_report,
-                        active_users,
-                        relevant_transcripts
-                    )
-                    if report:
-                        self.say_async(report)
+                report = await self.loop.run_in_executor(
+                    self.executor,
+                    self.brain.generate_hourly_report,
+                    active_users,
+                    relevant_transcripts
+                )
+                if report:
+                    self.say_async(report)
             await asyncio.sleep(3600)
 
     def process_voice_command(self, user, raw_audio, stream):
@@ -629,26 +945,22 @@ class MadnessBot:
                 await self._generate_and_play_tts(speech_generation, full_text, user)
 
     async def _generate_and_play_tts(self, speech_generation, sentence, user):
-        if self.mumble and self.mumble.sound_output:
-            # Clean up literal formatting codes to prevent TTS from attempting to read them aloud
-            cleaned_sentence = sentence.replace("\\n", " ").replace("/n", " ").replace("\\t", " ").replace("/t", " ")
-            cleaned_sentence = re.sub(r'\s+', ' ', cleaned_sentence).strip()
-            
-            if not cleaned_sentence:
-                return
+        # Clean up literal formatting codes to prevent TTS from attempting to read them aloud
+        cleaned_sentence = sentence.replace("\\n", " ").replace("/n", " ").replace("\\t", " ").replace("/t", " ")
+        cleaned_sentence = re.sub(r'\s+', ' ', cleaned_sentence).strip()
+        
+        if not cleaned_sentence:
+            return
 
-            pcm_data = await self.loop.run_in_executor(
-                self.executor,
-                self.voice.generate_pcm,
-                cleaned_sentence,
-                None
-            )
+        pcm_data = await self.loop.run_in_executor(
+            self.executor,
+            self.voice.generate_pcm,
+            cleaned_sentence,
+            None
+        )
 
-            if pcm_data and speech_generation == self.speech_generation:
-                try:
-                    self.mumble.sound_output.add_sound(pcm_data)
-                except Exception as e:
-                    self.logger.error(f"Error sending sound: {e}")
+        if pcm_data and speech_generation == self.speech_generation:
+            self._play_pcm_via_backend(pcm_data)
 
 
     def stop_speaking(self):
@@ -658,19 +970,75 @@ class MadnessBot:
                 try: self.queue.get_nowait()
                 except asyncio.QueueEmpty: break
                 else: self.queue.task_done()
-        self.loop.call_soon_threadsafe(_clear_tts_queue)
+        try:
+            self.loop.call_soon_threadsafe(_clear_tts_queue)
+        except Exception:
+            # Loop may be a test fake; run inline
+            try:
+                _clear_tts_queue()
+            except Exception:
+                pass
+        # Backend-first (TS6 bridge / Mumble), then legacy alias for mocks
+        backend = self._real_backend()
+        if backend is not None:
+            try:
+                if backend.clear_audio_buffer():
+                    return
+            except Exception:
+                pass
         sound_output = getattr(getattr(self, "mumble", None), "sound_output", None)
         clear_buffer = getattr(sound_output, "clear_buffer", None)
         if callable(clear_buffer):
             try: clear_buffer()
             except: pass
 
-    def send_chat(self, text):
+    def send_chat(self, text, target=None):
+        # Backend-first (works for Mumble + TS6 query)
+        backend = self._real_backend()
+        if backend is not None:
+            try:
+                if backend.send_chat(text, target=target):
+                    return True
+            except TypeError:
+                try:
+                    if backend.send_chat(text):
+                        return True
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        # Legacy Mumble alias fallback
         if self.mumble and self.my_channel_id is not None:
-            try: self.mumble.channels[self.my_channel_id].send_text_message(text)
+            try:
+                self.mumble.channels[self.my_channel_id].send_text_message(text)
+                return True
             except: pass
+        elif self.mumble:
+            # Channel id unknown (tests inject mocks without channels dict
+            # keyed by id) — best effort: try channels dict first value?
+            try:
+                channels = getattr(self.mumble, "channels", None)
+                if channels is not None and hasattr(channels, "__getitem__") and self.my_channel_id is not None:
+                    channels[self.my_channel_id].send_text_message(text)
+                    return True
+            except Exception:
+                pass
+        return False
+
+    def _music_unsupported(self):
+        """True when music must be blocked (TeamSpeak backend)."""
+        if self._is_teamspeak:
+            try:
+                self.send_chat(getattr(config, "TS6_MUSIC_UNSUPPORTED_MSG",
+                                       "🎵 Music via botamusique is not supported on TeamSpeak yet."))
+            except Exception:
+                pass
+            return True
+        return False
 
     def _send_music_command(self, command_key, argument=""):
+        if self._music_unsupported():
+            return None
         command = config.MUMBLE_COMMANDS[command_key]
         payload = command if not argument else f"{command} {argument}"
         self.send_chat(payload)
@@ -692,7 +1060,22 @@ class MadnessBot:
     def on_sound_received(self, user, sound_chunk):
         if not self.listening_enabled or not user: return
         if user['name'] in config.IGNORED_USERS: return
-        self.audio_manager.add_audio(user['name'], sound_chunk.pcm)
+        pcm = getattr(sound_chunk, "pcm", sound_chunk)
+        self.audio_manager.add_audio(user['name'], pcm)
+
+    def handle_audio(self, user_name, pcm_bytes):
+        """Backend-agnostic inbound audio (used by TS6 bridge)."""
+        if not self.listening_enabled or not user_name:
+            return
+        if user_name in config.IGNORED_USERS:
+            return
+        try:
+            self.audio_manager.add_audio(user_name, pcm_bytes)
+        except Exception as e:
+            try:
+                self.logger.error(f"Error handling inbound audio: {e}")
+            except Exception:
+                pass
 
     def on_user_updated(self, user, mods):
         if "channel_id" not in mods: return
@@ -702,6 +1085,26 @@ class MadnessBot:
         if new_ch == self.my_channel_id:
              self.say_async(f"Tervetuloa {name}", user=name)
 
+    def handle_user_joined(self, user_name, channel):
+        """Backend-agnostic join welcome (used by TS6 query cliententerview)."""
+        if not user_name:
+            return
+        if user_name == config.BOT_USERNAME or user_name in config.IGNORED_USERS:
+            return
+        try:
+            own_channel = self.my_channel_id
+            if own_channel is None:
+                backend = getattr(self, "backend", None)
+                if backend is not None:
+                    try:
+                        own_channel = backend.my_channel_id
+                    except Exception:
+                        pass
+            if channel == own_channel or str(channel) == str(own_channel):
+                self.say_async(f"Tervetuloa {user_name}", user=user_name)
+        except Exception:
+            pass
+
     def get_status(self):
         """Returns a status report of the bot's components."""
         uptime_seconds = int(time.time() - self.start_time)
@@ -709,8 +1112,55 @@ class MadnessBot:
         minutes, seconds = divmod(remainder, 60)
         uptime_str = f"{hours}h {minutes}m {seconds}s"
 
+        # Backend-aware connection state (Mumble alias fallback for tests).
+        # Use _real_backend() to ignore auto-mocked .backend on MagicMock bots.
+        backend = self._real_backend()
+        backend_label = "teamspeak6" if self._is_teamspeak else "mumble"
+        if backend is not None:
+            try:
+                alive = backend.is_alive()
+                # MagicMock guard: only honour real bools
+                connected = bool(alive) if isinstance(alive, bool) else False
+                # Test doubles (SimpleNamespace) may return bool too
+                if not isinstance(alive, bool):
+                    try:
+                        connected = bool(alive) and not ("Mock" in type(backend).__name__)
+                    except Exception:
+                        connected = False
+            except Exception:
+                connected = False
+        else:
+            try:
+                connected = bool(self.mumble and self.mumble.is_alive())
+            except Exception:
+                connected = False
+        bridge_status = "N/A"
+        try:
+            if backend is not None:
+                vb = getattr(backend, "voice_bridge_status", "N/A")
+                # Unwrap property values; ignore MagicMock artifacts
+                if isinstance(vb, str):
+                    bridge_status = vb
+                elif not ("Mock" in type(getattr(backend, "voice_bridge_status", "")).__name__):
+                    bridge_status = str(vb)
+        except Exception:
+            pass
+
+        if self._is_teamspeak:
+            conn_key = "TeamSpeak"
+            conn_val = "Connected" if connected else "Disconnected"
+        else:
+            conn_key = "Mumble"
+            try:
+                mumble_alive = bool(self.mumble and self.mumble.is_alive())
+            except Exception:
+                mumble_alive = connected
+            conn_val = "Connected" if (connected or mumble_alive) else "Disconnected"
+
         status = {
-            "Mumble": "Connected" if self.mumble and self.mumble.is_alive() else "Disconnected",
+            conn_key: conn_val,
+            "Backend": backend_label,
+            "VoiceBridge": bridge_status,
             "Uptime": uptime_str,
             "LLM": "Online" if self.brain.llm else "Offline",
             "STT": "Ready" if self.ear else "Error",

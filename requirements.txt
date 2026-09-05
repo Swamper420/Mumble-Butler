@@ -4,3 +4,7 @@ numpy
 python-dotenv
 openwakeword
 onnxruntime
+# TeamSpeak 6 query backend (SSH :10022, asyncio-native). Preferred over tsbot.
+# atsq requires Python >=3.12. Tested against teamspeak:3.13 and teamspeaksystems/teamspeak6-server.
+atsq
+asyncssh

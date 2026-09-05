@@ -5,6 +5,32 @@ try:
 except ImportError:
     pass
 
+# --- BACKEND SELECTOR ---
+# USE_TEAMSPEAK=true selects the TeamSpeak 6 backend (query + bridge sidecar).
+# Default false keeps the original Mumble (pymumble) behavior byte-identical.
+USE_TEAMSPEAK = os.getenv("USE_TEAMSPEAK", "False").lower() == "true"
+
+# --- TEAMSPEAK 6 CONFIG ---
+# Query (SSH :10022, text/control/presence) + voice bridge sidecar (:9987/udp).
+TS6_HOST = os.getenv("TS6_HOST", "127.0.0.1")
+TS6_QUERY_PORT = int(os.getenv("TS6_QUERY_PORT", "10022"))
+TS6_QUERY_USER = os.getenv("TS6_QUERY_USER", "serveradmin")
+TS6_QUERY_PASSWORD = os.getenv("TS6_QUERY_PASSWORD", "")
+TS6_SERVER_ID = int(os.getenv("TS6_SERVER_ID", "1"))
+TS6_NICKNAME = os.getenv("TS6_NICKNAME", os.getenv("MUMBLE_BOT_USERNAME", "Obama"))
+TS6_CHANNEL = os.getenv("TS6_CHANNEL", os.getenv("MUMBLE_TARGET_CHANNEL", "General"))
+TS6_CHANNEL_PASSWORD = os.getenv("TS6_CHANNEL_PASSWORD", "")
+TS6_VOICE_HOST = os.getenv("TS6_VOICE_HOST", TS6_HOST)
+TS6_VOICE_PORT = int(os.getenv("TS6_VOICE_PORT", "9987"))
+TS6_SERVER_PASSWORD = os.getenv("TS6_SERVER_PASSWORD", "")
+TS6_IDENTITY = os.getenv("TS6_IDENTITY", "")
+TS6_BRIDGE_RX_PORT = int(os.getenv("TS6_BRIDGE_RX_PORT", "5001"))
+TS6_BRIDGE_TX_PORT = int(os.getenv("TS6_BRIDGE_TX_PORT", "5002"))
+TS6_BRIDGE_TOKEN = os.getenv("TS6_BRIDGE_TOKEN", "")
+
+# Music is Mumble/botamusique-only. On TS6 all music commands reply unsupported.
+TS6_MUSIC_UNSUPPORTED_MSG = "🎵 Music via botamusique is not supported on TeamSpeak yet."
+
 # --- CONNECTION ---
 SERVER_IP = os.getenv("MUMBLE_SERVER_IP", "127.0.0.1")
 SERVER_PORT = int(os.getenv("MUMBLE_SERVER_PORT", "64738"))

@@ -6,22 +6,127 @@ class TextHandler:
     def __init__(self, bot):
         self.bot = bot
 
+    # -- sender resolution (Mumble + TeamSpeak) ---------------------------
+    def _resolve_sender(self, message):
+        """Resolve (sender_name, text) from any supported event shape.
+
+        Supports:
+        - pymumble object with .actor (session id) + .message
+        - TeamSpeak dict {invokername, msg} / raw "notifytextmessage ..." str
+        - Direct (sender, text) tuple / generic dict
+        - Legacy shim where .actor is already a name string
+        Returns (sender_name, text) or (None, None) when ignored/unknown.
+        """
+        # Fast path: dict / str / tuple via shared normalizer (no bot filter
+        # duplication — but we re-apply bot-aware filtering below).
+        if isinstance(message, (dict, str, tuple, list)):
+            try:
+                from backends.teamspeak_backend import normalize_text_event
+                normalized = normalize_text_event(message, bot=self.bot)
+                if normalized:
+                    return normalized
+                # Fall through to legacy handling for pymumble-shaped dicts
+            except Exception:
+                pass
+
+        actor = getattr(message, "actor", None)
+        text = getattr(message, "message", getattr(message, "msg", None))
+        if actor is None or text is None:
+            return (None, None)
+
+        # Legacy TS shim: actor already a display name
+        if isinstance(actor, str):
+            sender_name = actor
+            if sender_name in (getattr(config, "IGNORED_USERS", []) or []):
+                return (None, None)
+            own = {getattr(config, "BOT_USERNAME", ""), getattr(config, "TS6_NICKNAME", "")}
+            if sender_name in own:
+                return (None, None)
+            if not str(text).strip():
+                return (None, None)
+            return (sender_name, str(text))
+
+        # pymumble path: actor is a session id
+        sender_id = actor
+        sender_name = None
+        users = getattr(getattr(self.bot, "mumble", None), "users", None)
+        try:
+            if users is not None:
+                # users may be a dict, a MagicMock wrapping a dict, or pymumble's
+                # user container. Be tolerant (tests inject plain dicts).
+                contains = False
+                try:
+                    contains = sender_id in users
+                except Exception:
+                    contains = False
+                if contains:
+                    try:
+                        sender = users[sender_id] if hasattr(users, "__getitem__") else users.get(sender_id)
+                    except Exception:
+                        sender = None
+                    if isinstance(sender, dict):
+                        sender_name = sender.get("name")
+                    elif sender is not None:
+                        sender_name = getattr(sender, "name", None)
+                else:
+                    # Unknown session — still try backend list before dropping
+                    sender_name = None
+                try:
+                    myself_session = getattr(users, "myself_session", None)
+                    if sender_id == myself_session:
+                        return (None, None)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Fall back to backend user list (TS6 + MumbleBackend)
+        if sender_name is None:
+            backend = getattr(self.bot, "backend", None)
+            if backend is not None:
+                try:
+                    for u in backend.list_users() or []:
+                        if u.get("id") == sender_id:
+                            sender_name = u.get("name")
+                            break
+                except Exception:
+                    pass
+
+        if sender_name is None:
+            # No mumble alias and no backend hit: if users container is
+            # missing entirely (pure mock bot), treat unknown numeric actors
+            # as unresolvable; otherwise drop.
+            return (None, None)
+
+        if sender_name in (getattr(config, "IGNORED_USERS", []) or []):
+            return (None, None)
+
+        if not str(text).strip():
+            return (None, None)
+        return (sender_name, str(text))
+
     def handle(self, message):
-        """Parses and executes text commands."""
-        sender_id = message.actor
+        """Legacy entry point (pymumble callback). Also accepts TS shapes."""
+        sender_name, text = self._resolve_sender(message)
+        if not sender_name or text is None:
+            return
+        self.handle_text(sender_name, text)
 
-        # Validation checks
-        if sender_id not in self.bot.mumble.users:
+    def handle_text(self, sender_name, text):
+        """Shared core: route a (sender_name, text) pair to a command.
+
+        Used by both Mumble (via handle()) and TeamSpeak query
+        (notifytextmessage -> normalize -> handle_text).
+        """
+        if not sender_name or text is None:
+            return
+        sender_name = str(sender_name)
+        text = str(text).strip()
+        if not text:
+            return
+        if sender_name in (getattr(config, "IGNORED_USERS", []) or []):
             return
 
-        sender = self.bot.mumble.users[sender_id]
-        if sender_id == self.bot.mumble.users.myself_session:
-            return
-
-        if sender['name'] in config.IGNORED_USERS:
-            return
-
-        text = message.message.strip()
         parts = text.split(maxsplit=1)
         cmd = parts[0].lower()
         arg = parts[1] if len(parts) > 1 else ""
@@ -91,14 +196,14 @@ class TextHandler:
                 if len(arg) > 1000:
                     self.bot.send_chat("<b>Error:</b> Text-to-speech length is limited to 1000 characters.")
                 else:
-                    self.bot.say_async(arg, user=sender['name'])
+                    self.bot.say_async(arg, user=sender_name)
 
         elif cmd == config.TEXT_TRIGGERS['SAYSAVE']:
             if arg:
                 if len(arg) > 1000:
                     self.bot.send_chat("<b>Error:</b> Text-to-speech length is limited to 1000 characters.")
                 else:
-                    self.bot.saysave_async(arg, user=sender['name'])
+                    self.bot.saysave_async(arg, user=sender_name)
             else:
                 self.bot.send_chat("<b>Usage:</b> ?saysave &lt;text&gt;")
 
@@ -147,7 +252,7 @@ class TextHandler:
                 search_ctx = self.bot.brain.searcher.format_search_context(arg, results)
                 if results:
                     summary_prompt = f"Tiivistä seuraavat hakutulokset hakusanalle '{arg}' suomeksi:\n\n{search_ctx}"
-                    self.bot.say_stream(summary_prompt, user=sender['name'])
+                    self.bot.say_stream(summary_prompt, user=sender_name)
                 else:
                     self.bot.send_chat(f"Hakutuloksia ei löytynyt hakusanalle '{arg}'.")
             else:

@@ -1,0 +1,18 @@
+{
+  "name": "ts-voice-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TeamSpeak 6 voice sidecar for Mumble-Butler: TS Opus <-> 48k mono s16le PCM over localhost UDP.",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "teamspeak-js": "^1.0.0",
+    "@discordjs/opus": "^0.9.0"
+  },
+  "optionalDependencies": {
+    "opusscript": "^0.0.8"
+  }
+}

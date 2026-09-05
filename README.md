@@ -35,17 +35,26 @@ python main.py
 ## Architecture
 
 ```
-main.py → MadnessBot (bot.py)
+main.py → MadnessBot (bot.py) → self.backend: VoiceBackend
+├── MumbleBackend (backends/mumble_backend.py) — pymumble voice + text (default)
+└── TeamspeakBackend (backends/teamspeak_backend.py) — USE_TEAMSPEAK=true
+    ├── QueryClient (SSH :10022) — text / presence / move
+    └── BridgeSupervisor → bridge/ts-voice-bridge/ (Node + teamspeak-js)
+        RX: TS Opus → 48k PCM → UDP :5001 → AudioManager.add_audio()
+        TX: TTS 48k PCM → UDP :5002 → Opus → sendVoice()
 ├── Brain         — LLM inference, memory, music recommendations
 ├── Ear           — External STT REST API client
 ├── Voice         — External OpenAI-compatible TTS API
 ├── AudioManager  — Voice activity detection & per-user buffering
 ├── WakewordDetector — openWakeWord streaming detection
 ├── VoiceHandler  — Voice command routing
-└── TextHandler   — Text chat command routing
+└── TextHandler   — Text chat command routing (handle_text core, both backends)
 ```
 
-**Async workers:** `tts_worker` (TTS queue → Mumble audio) · `audio_processing_worker` (voice clips → STT → command routing) · `hourly_report_worker` (periodic announcements)
+PCM contract (both backends): 48 kHz mono s16le. `AudioManager`,
+`UserVoiceStream`, `Ear.transcribe` and `Voice.generate_pcm` are unchanged.
+
+**Async workers:** `tts_worker` (TTS queue → backend audio) · `audio_processing_worker` (voice clips → STT → command routing) · `hourly_report_worker` (periodic announcements)
 
 ## Commands
 
@@ -147,8 +156,58 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 
 Requires [botamusique](https://github.com/azlux/botamusique) running in the same Mumble channel. The bot sends botamusique chat commands (`!yplay`, `!stop`, `!skip`, `!volume`, etc.) to control playback.
 
+> 🎵 Music is Mumble-only. On TeamSpeak (`USE_TEAMSPEAK=true`) every music
+> command replies `🎵 Music via botamusique is not supported on TeamSpeak yet.`
+> and nothing is sent to TS chat.
+
+## TeamSpeak 6 support (`USE_TEAMSPEAK=true`)
+
+Mumble remains the default. Set `USE_TEAMSPEAK=true` to join a TeamSpeak 6
+server with full voice via the bridge sidecar (not text-only).
+
+```bash
+cp .env.example .env   # fill TS6_* below
+USE_TEAMSPEAK=True python main.py
+```
+
+| Variable | Default | Description |
+|---|---|---|
+| `USE_TEAMSPEAK` | `False` | `true` = TeamSpeak 6 backend, `false` = Mumble |
+| `TS6_HOST` | `127.0.0.1` | TS6 server address (query + voice) |
+| `TS6_QUERY_PORT` | `10022` | SSH ServerQuery port (`:10022/tcp`) |
+| `TS6_QUERY_USER` / `TS6_QUERY_PASSWORD` | `serveradmin` / empty | Query login (see server `TSSERVER_QUERY_ADMIN_PASSWORD`) |
+| `TS6_SERVER_ID` | `1` | Virtual server id (`use <id>`) |
+| `TS6_NICKNAME` | `${MUMBLE_BOT_USERNAME}` | Bot display name (`clientupdate`) |
+| `TS6_CHANNEL` | `${MUMBLE_TARGET_CHANNEL}` | Channel to join (exact match, first hit + warning on dupes) |
+| `TS6_CHANNEL_PASSWORD` | empty | Channel password (`cpw`) |
+| `TS6_VOICE_HOST` / `TS6_VOICE_PORT` | `TS6_HOST` / `9987` | Voice client target (`:9987/udp`) |
+| `TS6_SERVER_PASSWORD` | empty | Voice server password |
+| `TS6_IDENTITY` | empty | Persisted voice identity (empty = generate once, then reuse printed value; fresh identities may need a security-level upgrade) |
+| `TS6_BRIDGE_RX_PORT` / `TS6_BRIDGE_TX_PORT` | `5001` / `5002` | Localhost PCM ports (bridge→Python / Python→bridge) |
+| `TS6_BRIDGE_TOKEN` | empty | Shared secret prefixing bridge UDP datagrams |
+
+Query setup on the server:
+
+```bash
+TSSERVER_QUERY_SSH_ENABLED=1
+TSSERVER_QUERY_ADMIN_PASSWORD=<== TS6_QUERY_PASSWORD>
+# add the bot IP to query_ip_allowlist.txt or FloodError id 524 occurs
+```
+
+Voice bridge (see [bridge/ts-voice-bridge/README.md](bridge/ts-voice-bridge/README.md)):
+
+```bash
+cd bridge/ts-voice-bridge && npm install   # teamspeak-js + @discordjs/opus
+# Python BridgeSupervisor spawns `node index.js` automatically.
+```
+
+`?status` shows `Backend: mumble|teamspeak6` + `VoiceBridge: Connected/Down/N/A`.
+Kill the bridge to verify degradation: text keeps working while voice reports `Down`.
+`MUMBLE_BANDWIDTH` is Mumble-only (no-op on TS).
+
 ## Tests
 
 ```bash
 python -m pytest tests/
+python -m unittest tests.test_teamspeak_backend -v   # TS6: factory, normalize, music guard, bridge framing
 ```
