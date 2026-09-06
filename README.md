@@ -87,7 +87,8 @@ PCM contract (both backends): 48 kHz mono s16le. `AudioManager`,
 | `?listen` | Toggle voice listening |
 | `?play` `?stop` `?pause` `?resume` `?skip` `?clear` `?queue` `?now` | Music controls |
 | `?volume <0-100>` / `?repeat <n>` / `?mode <name>` | Playback settings |
-| `?recommend <vibe>` | LLM music recommendation |
+| `?recommend <vibe>` | LLM music recommendation (verified, no repeats) |
+| `?another` / `?dislike` / `?history` | Fresh pick / skip+replace / recent picks |
 | `?ping` | Pong! |
 
 ### TTS Voices

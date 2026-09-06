@@ -1,11 +1,33 @@
 import sys
 import os
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
+
+import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from modules.recommender import MusicRecommender
+
+
+def _passthrough_verify(track, return_meta=False, **kwargs):
+    """Mock verify: accept the new return_meta kwarg."""
+    if return_meta:
+        return (track, {"score": 1.0, "artist": "", "title": track})
+    return track
+
+
+def _fresh_brain():
+    """Brain with isolated (temp-file) recommender history."""
+    from modules.brain import Brain
+    brain = Brain()
+    tmp = os.path.join(tempfile.gettempdir(),
+                       f"test_music_history_{os.getpid()}.json")
+    brain.recommender.history_file = tmp
+    brain.recommender.history = []
+    brain.recommender._verify_cache.clear()
+    return brain
 
 class TestEnhancedRecommender(unittest.TestCase):
     def test_normalize_track_strips_noise(self):
@@ -14,21 +36,24 @@ class TestEnhancedRecommender(unittest.TestCase):
         self.assertEqual(recommender._normalize_track("Daft Punk - One More Time (Remastered 2021)"), "daft punk one more time")
         self.assertEqual(recommender._normalize_track("Kavinsky - Nightcall (feat. Lovefoxxx)"), "kavinsky nightcall")
 
-    @patch('requests.get')
+    @patch.object(requests.Session, 'get')
     def test_verify_track_on_itunes(self, mock_get):
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "results": [
-                {"artistName": "Queen", "trackName": "Bohemian Rhapsody"}
+                {"artistName": "Queen", "trackName": "Bohemian Rhapsody",
+                 "kind": "song"}
             ]
         }
         mock_get.return_value = mock_response
 
         recommender = MusicRecommender()
+        recommender._verify_cache.clear()
         res = recommender.verify_track_on_itunes("Queen - Bohemian Rhapsody")
         self.assertEqual(res, "Queen - Bohemian Rhapsody")
 
         # Test failure fallback to None
+        recommender._verify_cache.clear()
         mock_response.json.return_value = {"results": []}
         res_fail = recommender.verify_track_on_itunes("Unknown Song")
         self.assertIsNone(res_fail)
@@ -54,21 +79,21 @@ class TestEnhancedRecommender(unittest.TestCase):
 
     @patch('modules.recommender.MusicRecommender.verify_track_on_itunes')
     def test_recommend_song_fallback_mode(self, mock_verify):
-        mock_verify.side_effect = lambda x: x
+        mock_verify.side_effect = _passthrough_verify
         from modules.brain import Brain
         with patch('modules.brain.LLM_AVAILABLE', False):
-            brain = Brain()
+            brain = _fresh_brain()
             brain.recommender.get_recommendation = MagicMock(return_value="Daft Punk - One More Time")
             song = brain.recommend_song("chill music")
             self.assertEqual(song, "Daft Punk - One More Time")
 
     @patch('modules.recommender.MusicRecommender.verify_track_on_itunes')
     def test_recommend_song_return_meta(self, mock_verify):
-        mock_verify.side_effect = lambda x: x
+        mock_verify.side_effect = _passthrough_verify
         from modules.brain import Brain
         with patch('modules.brain.LLM_AVAILABLE', True):
             with patch('modules.brain.Brain.check_connection', return_value=True):
-                brain = Brain()
+                brain = _fresh_brain()
                 brain.llm = MagicMock()
                 brain.llm.return_value = {
                     "choices": [{
@@ -83,11 +108,11 @@ class TestEnhancedRecommender(unittest.TestCase):
 
     @patch('modules.recommender.MusicRecommender.verify_track_on_itunes')
     def test_recommend_song_specific_bypass_history(self, mock_verify):
-        mock_verify.side_effect = lambda x: x
+        mock_verify.side_effect = _passthrough_verify
         from modules.brain import Brain
         with patch('modules.brain.LLM_AVAILABLE', True):
             with patch('modules.brain.Brain.check_connection', return_value=True):
-                brain = Brain()
+                brain = _fresh_brain()
                 brain.llm = MagicMock()
                 brain.llm.return_value = {
                     "choices": [{

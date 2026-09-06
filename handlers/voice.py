@@ -51,6 +51,19 @@ class VoiceHandler:
                 return True
         return False
 
+    def _strip_leading_trigger(self, content, triggers):
+        """Remove one leading trigger phrase only (QoL: never mangle the
+        rest of the query, e.g. artist names containing trigger words)."""
+        if not content or not triggers:
+            return content
+        s = content.strip()
+        for t in sorted(triggers, key=len, reverse=True):
+            pattern = r"^" + re.escape(t.lower()) + r"\b[\s,:\-]*"
+            stripped = re.sub(pattern, "", s, count=1, flags=re.IGNORECASE)
+            if stripped != s:
+                return stripped.strip()
+        return s
+
     def handle(self, user, text):
         """
         Returns True if a command was executed, False otherwise.
@@ -121,18 +134,24 @@ class VoiceHandler:
         # 4. Recommend
         if self._has_trigger(content, config.VOICE_TRIGGERS['RECOMMEND']):
             self.bot.play_action_confirmation("MUSIC")
-            desc = content
-            for t in config.VOICE_TRIGGERS['RECOMMEND']:
-                desc = re.sub(r"\b" + re.escape(t) + r"\b", "", desc, flags=re.IGNORECASE)
-            song, vibe = self.bot.brain.recommend_song(
-                desc.strip() or "random music",
-                chat_context=self.bot.recent_transcripts,
-                return_meta=True
-            )
+            desc = self._strip_leading_trigger(content, config.VOICE_TRIGGERS['RECOMMEND'])
+            try:
+                song, vibe = self.bot.brain.recommend_song(
+                    desc.strip() or "random music",
+                    chat_context=self.bot.recent_transcripts,
+                    return_meta=True
+                )
+            except Exception:
+                song, vibe = None, ""
             if song:
                 announcement = f"Jonossa: {song}. {vibe}" if vibe else f"Jonossa: {song}"
                 self.bot.say_async(announcement, user=user)
                 self.bot.play(song)
+            else:
+                self.bot.say_async(
+                    "En löytänyt sopivaa kappaletta. Kokeile vaikka: suosittele chill synthwave.",
+                    user=user,
+                )
             return True
 
         # 5. Play / Queue (Specific)
@@ -153,15 +172,23 @@ class VoiceHandler:
         # 6. Play (Generic Music / "music")
         if self._has_trigger(content, config.VOICE_TRIGGERS['PLAY_MUSIC']):
             self.bot.play_action_confirmation("MUSIC")
-            rec, vibe = self.bot.brain.recommend_song(
-                "random music",
-                chat_context=self.bot.recent_transcripts,
-                return_meta=True
-            )
+            try:
+                rec, vibe = self.bot.brain.recommend_song(
+                    "random music",
+                    chat_context=self.bot.recent_transcripts,
+                    return_meta=True
+                )
+            except Exception:
+                rec, vibe = None, ""
             if rec:
                 announcement = f"Jonossa: {rec}. {vibe}" if vibe else f"Jonossa: {rec}"
                 self.bot.say_async(announcement, user=user)
                 self.bot.play(rec)
+            else:
+                self.bot.say_async(
+                    "En löytänyt soitettavaa juuri nyt. Kokeile myöhemmin uudelleen.",
+                    user=user,
+                )
             return True
 
         # 7. Resume (if paused)

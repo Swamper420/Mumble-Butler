@@ -233,13 +233,83 @@ class TextHandler:
                 self.bot.send_chat("<b>Usage:</b> ?remind [in] &lt;amount&gt; &lt;second/minute/hour&gt;s [about] &lt;message&gt;<br/><i>Example: ?remind in 10 minutes about standup</i>")
 
         elif cmd == config.TEXT_TRIGGERS['RECOMMEND']:
-            song, vibe = self.bot.brain.recommend_song(
-                arg or "random music",
-                chat_context=self.bot.recent_transcripts,
-                return_meta=True
-            )
+            try:
+                song, vibe = self.bot.brain.recommend_song(
+                    arg or "random music",
+                    chat_context=self.bot.recent_transcripts,
+                    return_meta=True
+                )
+            except Exception as e:
+                self.bot.send_chat(f"<b>Recommendation error:</b> {e}")
+                return
             if song:
                 msg = f"🎵 <b>Queued:</b> {song}"
+                if vibe:
+                    msg += f"<br/><i>Vibe: {vibe}</i>"
+                self.bot.send_chat(msg)
+                self.bot.play(song)
+            else:
+                self.bot.send_chat(
+                    "<b>No recommendation found.</b> Try e.g. "
+                    "<i>?recommend chill synthwave</i> or <i>?recommend Nightwish</i>."
+                )
+
+        elif cmd in ("?another", "?more", "?next"):
+            # QoL: fresh pick excluding what's already in history (which
+            # includes the last recommendation, since it was just added).
+            try:
+                song, vibe = self.bot.brain.recommend_song(
+                    arg or "something else, different artist",
+                    chat_context=self.bot.recent_transcripts,
+                    return_meta=True
+                )
+            except Exception as e:
+                self.bot.send_chat(f"<b>Recommendation error:</b> {e}")
+                return
+            if song:
+                msg = f"🎵 <b>Queued (another):</b> {song}"
+                if vibe:
+                    msg += f"<br/><i>Vibe: {vibe}</i>"
+                self.bot.send_chat(msg)
+                self.bot.play(song)
+            else:
+                self.bot.send_chat("<b>No fresh recommendation found.</b> Try ?history to see recent picks.")
+
+        elif cmd in ("?history", "?recent"):
+            try:
+                recent = self.bot.brain.recommender.history_summary(5)
+            except Exception:
+                recent = []
+            if recent:
+                items = "<br/>".join(f"{i+1}. {t}" for i, t in enumerate(recent))
+                self.bot.send_chat(f"🎵 <b>Recent picks:</b><br/>{items}")
+            else:
+                self.bot.send_chat("🎵 No picks yet. Try <i>?recommend chill</i>.")
+
+        elif cmd in ("?dislike", "?nope", "?bad"):
+            # QoL: drop last pick, skip it, and recommend a replacement.
+            removed = None
+            try:
+                removed = self.bot.brain.recommender.remove_last()
+            except Exception:
+                pass
+            try:
+                self.bot.skip()
+            except Exception:
+                pass
+            if removed:
+                self.bot.send_chat(f"👎 Skipped <i>{removed}</i> — won't repeat it soon.")
+            try:
+                song, vibe = self.bot.brain.recommend_song(
+                    arg or "something else, different artist",
+                    chat_context=self.bot.recent_transcripts,
+                    return_meta=True
+                )
+            except Exception as e:
+                self.bot.send_chat(f"<b>Recommendation error:</b> {e}")
+                return
+            if song:
+                msg = f"🎵 <b>Queued instead:</b> {song}"
                 if vibe:
                     msg += f"<br/><i>Vibe: {vibe}</i>"
                 self.bot.send_chat(msg)
