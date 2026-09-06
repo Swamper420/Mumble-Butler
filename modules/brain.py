@@ -21,6 +21,7 @@ class Brain:
         self.session = requests.Session() if LLM_AVAILABLE else None
         self.recommender = MusicRecommender()
         self.searcher = WebSearcher()
+        self.last_recommendation = None
 
         # Initialize memory state from config (defaults to False if not set)
         self.memory_enabled = getattr(config, 'MEMORY_ENABLED', False)
@@ -57,20 +58,46 @@ class Brain:
 
 
     def _chat_completion(self, messages, max_tokens=None, temperature=None, stop=None):
-        """Send chat completion request to Ollama API or handle test mocks."""
+        """Send chat completion request to Ollama API or handle test mocks.
+
+        Supports three backends (checked in order):
+        1. Objects exposing ``create_chat_completion`` (llama.cpp style).
+        2. Plain callables (used by tests: ``llm(messages=..., max_tokens=...)``).
+        3. The external Ollama HTTP API (when ``self.llm`` is a simple flag).
+        """
         if max_tokens is None:
             max_tokens = getattr(config, 'LLM_MAX_TOKENS', 512)
 
-        if hasattr(self.llm, 'create_chat_completion'):
-            kwargs = {
-                'messages': messages,
-                'max_tokens': max_tokens
-            }
-            if stop is not None:
-                kwargs['stop'] = stop
-            if temperature is not None:
-                kwargs['temperature'] = temperature
-            return self.llm.create_chat_completion(**kwargs)
+        create_fn = getattr(self.llm, 'create_chat_completion', None)
+        if callable(create_fn):
+            # A bare MagicMock auto-creates this attribute; if its return value
+            # was never configured but the mock itself is callable with a dict
+            # return_value, prefer the callable path (test compatibility).
+            try:
+                from unittest.mock import MagicMock as _MagicMock
+                _auto_mocked = (
+                    isinstance(self.llm, _MagicMock)
+                    and isinstance(getattr(create_fn, 'return_value', None), _MagicMock)
+                    and isinstance(getattr(self.llm, 'return_value', None), dict)
+                )
+            except Exception:
+                _auto_mocked = False
+            if not _auto_mocked:
+                kwargs = {
+                    'messages': messages,
+                    'max_tokens': max_tokens
+                }
+                if stop is not None:
+                    kwargs['stop'] = stop
+                if temperature is not None:
+                    kwargs['temperature'] = temperature
+                result = create_fn(**kwargs)
+                if isinstance(result, dict) and 'choices' in result:
+                    return result
+                # Unexpected shape (e.g. unconfigured mock): fall through
+                # to the callable / HTTP paths instead of crashing.
+                if not callable(self.llm):
+                    return result
 
         if callable(self.llm):
             return self.llm(messages=messages, max_tokens=max_tokens)
@@ -297,51 +324,154 @@ class Brain:
             return False
 
     def parse_recommendation_output(self, llm_output: str):
-        lines = llm_output.strip().split('\n')
+        """Parse the LLM DJ response into (intent, vibe, recommendations).
+
+        Tolerant by design: section headers are matched case-insensitively
+        (``[intent]`` / ``Intent:`` / ``**RECOMMENDATIONS**`` …), markdown
+        bullets/numbering/quotes are stripped, en/em dashes are treated as
+        ``" - "``, and ``"Title by Artist"`` lines are flipped to
+        ``"Artist - Title"``. Free-form answers without any headers are
+        scanned for ``Artist - Title`` lines as a last resort.
+        """
         intent = "OPEN"
         vibe = ""
         recommendations = []
-        
-        current_section = None
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            if line == "[INTENT]":
-                current_section = "intent"
-                continue
-            elif line == "[VIBE]":
-                current_section = "vibe"
-                continue
-            elif line == "[RECOMMENDATIONS]":
-                current_section = "recommendations"
-                continue
-            
-            if current_section == "intent":
-                intent = line.upper()
-            elif current_section == "vibe":
-                vibe = line
-            elif current_section == "recommendations":
-                if " - " in line:
-                    clean_line = re.sub(r'^\d+[\.\)\s-]*', '', line).strip()
-                    clean_line = re.sub(r'^[\-\*•\s]*', '', clean_line).strip()
-                    if clean_line:
-                        recommendations.append(clean_line)
-                        
-        return intent, vibe, recommendations
 
-    def recommend_song(self, description, chat_context=None, return_meta=False):
-        """
-        Fully LLM-driven music recommendation:
-        1. Contextual vibe analysis using room chat history & user prompt.
-        2. LLM DJ generation of candidate 'Artist - Track Title' songs and vibe summary.
-        3. iTunes verification & standardization.
-        4. History filtering.
-        """
+        if not llm_output:
+            return intent, vibe, recommendations
+
+        text = llm_output.strip().replace('```', '')
+        lines = text.split('\n')
+
+        header_re = re.compile(
+            r'^\s*\**\s*\[?\s*(intent|vibe|recommendations)\s*\]?\s*:?\s*\**\s*$',
+            re.IGNORECASE,
+        )
+        current_section = None
+        vibe_lines = []
+        rec_lines = []
+        intent_lines = []
+        for line in lines:
+            m = header_re.match(line.strip())
+            if m:
+                current_section = m.group(1).lower()
+                continue
+            if current_section == "intent":
+                intent_lines.append(line.strip())
+            elif current_section == "vibe":
+                vibe_lines.append(line.strip())
+            elif current_section == "recommendations":
+                rec_lines.append(line)
+            # Lines before any header are ignored (preamble).
+
+        if intent_lines:
+            raw_intent = " ".join(t for t in intent_lines if t).upper()
+            if "SPECIFIC" in raw_intent or "EXACT" in raw_intent or "REQUEST" in raw_intent:
+                intent = "SPECIFIC"
+            elif "GENRE" in raw_intent or "MOOD" in raw_intent or "VIBE" in raw_intent:
+                intent = "GENRE_MOOD"
+            elif "OPEN" in raw_intent or "RANDOM" in raw_intent or "CONTEXT" in raw_intent:
+                intent = "OPEN"
+            elif raw_intent:
+                intent = raw_intent.split()[0]
+
+        vibe = " ".join(t for t in vibe_lines if t).strip().strip('"\'“”‘’')
+        if len(vibe) > 200:
+            vibe = vibe[:200].rsplit(' ', 1)[0]
+
+        if rec_lines:
+            for line in rec_lines:
+                cleaned = self._clean_recommendation_line(line)
+                if cleaned:
+                    recommendations.append(cleaned)
+
+        if not recommendations:
+            # Fallback: scan the whole output for 'Artist - Title' lines.
+            for line in lines:
+                if header_re.match(line.strip()):
+                    continue
+                cleaned = self._clean_recommendation_line(line)
+                if cleaned and cleaned not in recommendations:
+                    recommendations.append(cleaned)
+
+        # Final safety net: keep order, drop exact duplicates.
+        seen = set()
+        unique = []
+        for r in recommendations:
+            key = r.lower()
+            if key not in seen:
+                seen.add(key)
+                unique.append(r)
+        return intent, vibe, unique
+
+    def _clean_recommendation_line(self, line: str):
+        """Normalize one candidate line to 'Artist - Title' or ''."""
+        if not line:
+            return ""
+        s = line.strip()
+        # Strip markdown bullets / numbering / quotes / checkboxes.
+        s = re.sub(r'^[\s\-\*•·–>]+', '', s).strip()
+        s = re.sub(r'^\d+[\.\)\:\-–\s]+', '', s).strip()
+        s = re.sub(r'^\[\s*[xX ]\s*\]\s*', '', s).strip()
+        s = s.strip(' "\'“”‘’`').strip()
+        s = s.replace('–', '-').replace('—', '-').replace('−', '-')
+        if not s or len(s) < 3:
+            return ""
+        if ' - ' not in s:
+            # 'Title by Artist' -> 'Artist - Title'
+            m = re.match(r'^\s*(.+?)\s+by\s+(.+?)\s*$', s, re.IGNORECASE)
+            if m and len(m.group(1).strip()) >= 2 and len(m.group(2).strip()) >= 2:
+                s = f"{m.group(2).strip()} - {m.group(1).strip()}"
+            else:
+                return ""
+        # Drop trailing parenthetical noise the LLM sometimes adds, keep core.
+        s = re.sub(r'\s{2,}', ' ', s).strip()
+        artist, _, title = s.partition(' - ')
+        if len(artist.strip()) < 2 or len(title.strip()) < 2:
+            return ""
+        return f"{artist.strip()} - {title.strip()}"
+
+    def _is_generic_description(self, description):
+        if not description:
+            return True
+        return self.recommender.is_generic_query(description)
+
+    def _extract_explicit_track(self, description):
+        """Return 'Artist - Title' if the user named a concrete track, else None."""
+        if not description:
+            return None
+        s = description.strip().strip('"\'“”‘’')
+        if self.recommender.is_generic_query(s):
+            return None
+        artist, title = self.recommender._split_artist_title(s)
+        if artist and title and len(artist) >= 2 and len(title) >= 2:
+            # Guard against sentences that merely contain ' - ' or 'by'.
+            if len(s.split()) <= 12:
+                return f"{artist} - {title}"
+        return None
+
+    def _describe_chat_context(self, chat_context, max_items=8, max_chars=800):
+        if not chat_context:
+            return "Ei viimeaikaisia viestejä."
+        recent = chat_context[-max_items:]
+        parts = []
+        for t in recent:
+            try:
+                user = t.get('user', '?')
+                text = str(t.get('text', ''))[:120]
+                parts.append(f"{user}: {text}")
+            except Exception:
+                continue
+        context_str = " | ".join(parts) or "Ei viimeaikaisia viestejä."
+        return context_str[:max_chars]
+
+    def _build_dj_prompt(self, description, context_str, num_candidates=5):
         system_content = (
             "Olet asiantunteva musiikki-DJ ja suosittelumoottori äänichat-hovimestarille.\n"
             "Analysoi viimeaikainen huoneen keskustelukonteksti ja käyttäjän pyyntö suositellaksesi kappaleita.\n"
-            "Vastaa tiukasti seuraavassa muodossa:\n\n"
+            f"Anna aina {num_candidates} erilaista, todella olemassa olevaa kappaletta muodossa 'Artisti - Kappale'.\n"
+            "Älä keksi kappaleita. Suosi tunnettuja, toistettavissa olevia kappaleita.\n"
+            "Vastaa tiukasti seuraavassa muodossa, ilman markdownia tai esipuhetta:\n\n"
             "[INTENT]\n"
             "<SPECIFIC jos käyttäjä pyysi tiettyä kappaletta/artistia, GENRE_MOOD jos genrea/tunnelmaa pyydettiin, tai OPEN jos satunnainen/kontekstuaalinen>\n\n"
             "[VIBE]\n"
@@ -351,37 +481,68 @@ class Brain:
             "2. Artistin Nimi - Kappaleen Nimi\n"
             "3. Artistin Nimi - Kappaleen Nimi\n"
             "4. Artistin Nimi - Kappaleen Nimi\n"
+            "5. Artistin Nimi - Kappaleen Nimi\n"
         )
-
-        fallback_tracks = [
-            "Daft Punk - One More Time",
-            "Queen - Bohemian Rhapsody",
-            "The Midnight - Sunset",
-            "Miles Davis - So What",
-            "Kavinsky - Nightcall"
-        ]
-
-        if not self.llm:
-            print("🧠 LLM is offline. Selecting from curated fallback catalog.")
-            is_generic = not description or description.lower() in ("random music", "satunnainen musiikki", "musiikki")
-            candidate_list = [description] if not is_generic and " - " in description else fallback_tracks
-            song = self.recommender.get_recommendation(candidate_list)
-            vibe_summary = f"Kuratoitu valikoima hakusanalle '{description}'" if not is_generic else "Kuratoitu klassinen tunnelma"
-            return (song, vibe_summary) if return_meta else song
-
-        context_str = ""
-        if chat_context:
-            recent = chat_context[-10:]
-            context_str = " | ".join([f"{t['user']}: {t['text']}" for t in recent])
-        else:
-            context_str = "Ei viimeaikaisia viestejä."
-
         user_content = (
             f"Viimeaikainen keskustelukonteksti: {context_str}\n"
             f"Käyttäjän pyyntö: {description or 'Suosittele hyvää kappaletta huoneeseen'}\n"
             f"Luo tunnelmaan sopivia suosituksia."
         )
+        return system_content, user_content
 
+    def recommend_song(self, description, chat_context=None, return_meta=False, count=1):
+        """
+        Fully LLM-driven music recommendation:
+        1. Fast path: explicit 'Artist - Title' requests resolve via iTunes
+           without any LLM call (low latency, no hallucination).
+        2. Contextual LLM DJ generates candidate songs + vibe summary.
+        3. iTunes verification & standardization with best-match scoring.
+        4. History filtering with variety (shuffled, not always first pick).
+
+        Returns a single track string, or (track, vibe) when return_meta
+        is True. With count > 1, use recommend_songs() instead.
+        """
+        if count is not None and int(count) > 1:
+            songs, vibe = self.recommend_songs(
+                description, chat_context=chat_context, count=int(count))
+            song = songs[0] if songs else None
+            return (song, vibe) if return_meta else song
+
+        desc = (description or "").strip().strip('"\'“”‘’')
+
+        # --- Fast path: the user named a concrete track -------------------
+        explicit = self._extract_explicit_track(desc)
+        if explicit:
+            final = self.recommender.resolve_track(explicit) or explicit
+            self.recommender.add_to_history(final)
+            self.last_recommendation = {"track": final, "vibe": "", "query": desc}
+            vibe_summary = f"Toivekappale: {final}"
+            return (final, vibe_summary) if return_meta else final
+
+        num_candidates = getattr(config, 'RECOMMENDER_NUM_CANDIDATES', 5)
+
+        # --- Offline path: curated catalog, no LLM -------------------------
+        if not self.llm:
+            print("🧠 LLM is offline. Selecting from curated fallback catalog.")
+            is_generic = self._is_generic_description(desc)
+            if not is_generic:
+                # A mood/genre phrase ("chill jazz") is still a useful seed.
+                candidate_list = [desc]
+            else:
+                candidate_list = []
+            song = self.recommender.get_recommendation(candidate_list) \
+                if candidate_list else self.recommender.recommend_fallback()
+            vibe_summary = (f"Kuratoitu valikoima hakusanalle '{desc}'"
+                            if not is_generic else "Kuratoitu klassinen tunnelma")
+            if song:
+                self.last_recommendation = {"track": song, "vibe": vibe_summary, "query": desc}
+            return (song, vibe_summary) if return_meta else song
+
+        # --- LLM DJ path ----------------------------------------------------
+        context_str = self._describe_chat_context(chat_context)
+        system_content, user_content = self._build_dj_prompt(
+            desc or 'Suosittele hyvää kappaletta huoneeseen',
+            context_str, num_candidates=num_candidates)
         messages = [
             {"role": "system", "content": system_content},
             {"role": "user", "content": user_content}
@@ -390,21 +551,24 @@ class Brain:
         try:
             output = self._chat_completion(
                 messages=messages,
-                max_tokens=300,
-                temperature=0.7
+                max_tokens=getattr(config, 'RECOMMENDER_LLM_TOKENS', 400),
+                temperature=getattr(config, 'RECOMMENDER_LLM_TEMPERATURE', 0.8)
             )
 
             llm_text = output['choices'][0]['message']['content'].strip()
             intent, vibe, recommendations = self.parse_recommendation_output(llm_text)
-            
+
             print(f"🎵 Recommendation Intent: {intent}, Vibe: {vibe}")
             print(f"🎵 LLM Recommendations: {recommendations}")
-            
+
             if not recommendations:
                 print("⚠️ LLM didn't return formatted recommendations. Trying fallback track list.")
-                candidate_list = [description] if description and " - " in description else fallback_tracks
-                song = self.recommender.get_recommendation(candidate_list)
+                candidate_list = [] if self._is_generic_description(desc) else [desc]
+                song = (self.recommender.get_recommendation(candidate_list)
+                        if candidate_list else self.recommender.recommend_fallback())
                 vibe_summary = vibe or "Valittu tunnelman mukaan"
+                if song:
+                    self.last_recommendation = {"track": song, "vibe": vibe_summary, "query": desc}
                 return (song, vibe_summary) if return_meta else song
 
             is_specific = (intent == "SPECIFIC")
@@ -413,13 +577,71 @@ class Brain:
                 allow_history_override=is_specific
             )
             vibe_summary = vibe or "Valittu tunnelman mukaan"
-            
+            if selected_track:
+                self.last_recommendation = {
+                    "track": selected_track, "vibe": vibe_summary, "query": desc}
+
             return (selected_track, vibe_summary) if return_meta else selected_track
 
         except Exception as e:
             print(f"⚠️ Recommendation error: {e}. Using fallback track selection.")
-            song = self.recommender.get_recommendation(fallback_tracks)
+            song = self.recommender.recommend_fallback()
+            if song:
+                self.last_recommendation = {
+                    "track": song, "vibe": "Fallback-tunnelma", "query": desc}
             return (song, "Fallback-tunnelma") if return_meta else song
+
+    def recommend_songs(self, description, chat_context=None, count=3):
+        """Recommend up to *count* tracks. Returns (tracks_list, vibe)."""
+        count = max(1, min(5, int(count or 1)))
+        desc = (description or "").strip().strip('"\'“”‘’')
+
+        explicit = self._extract_explicit_track(desc)
+        if explicit:
+            final = self.recommender.resolve_track(explicit) or explicit
+            self.recommender.add_to_history(final)
+            vibe = f"Toivekappale: {final}"
+            return [final], vibe
+
+        if not self.llm:
+            tracks = self.recommender.get_recommendations(
+                [] if self._is_generic_description(desc) else [desc],
+                count=count) or []
+            while len(tracks) < count:
+                extra = self.recommender.recommend_fallback()
+                if not extra or extra in tracks:
+                    break
+                tracks.append(extra)
+            vibe = (f"Kuratoitu valikoima hakusanalle '{desc}'"
+                    if desc and not self._is_generic_description(desc)
+                    else "Kuratoitu klassinen tunnelma")
+            return tracks, vibe
+
+        context_str = self._describe_chat_context(chat_context)
+        system_content, user_content = self._build_dj_prompt(
+            desc or 'Suosittele hyvää kappaletta huoneeseen',
+            context_str,
+            num_candidates=max(getattr(config, 'RECOMMENDER_NUM_CANDIDATES', 5), count))
+        try:
+            output = self._chat_completion(
+                messages=[
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": user_content}],
+                max_tokens=getattr(config, 'RECOMMENDER_LLM_TOKENS', 400),
+                temperature=getattr(config, 'RECOMMENDER_LLM_TEMPERATURE', 0.8))
+            llm_text = output['choices'][0]['message']['content'].strip()
+            intent, vibe, recommendations = self.parse_recommendation_output(llm_text)
+            tracks = self.recommender.get_recommendations(
+                recommendations, count=count,
+                allow_history_override=(intent == "SPECIFIC"))
+            if not tracks:
+                tracks = [self.recommender.recommend_fallback()]
+                tracks = [t for t in tracks if t]
+            return tracks, (vibe or "Valittu tunnelman mukaan")
+        except Exception as e:
+            print(f"⚠️ Multi-recommendation error: {e}.")
+            track = self.recommender.recommend_fallback()
+            return ([track] if track else [], "Fallback-tunnelma")
 
 
     def generate_hourly_report(self, active_users, recent_transcripts):

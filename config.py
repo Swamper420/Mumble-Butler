@@ -140,6 +140,9 @@ TEXT_TRIGGERS = {
     'SAYSAVE': "?saysave",
     'MEMORY': "?memory",
     'RECOMMEND': "?recommend",
+    'SURPRISE': "?surprise",
+    'HISTORY': "?history",
+    'DISLIKE': "?dislike",
     'REMIND': "?remind",
     'SEARCH': "?search"
 }
@@ -155,5 +158,17 @@ HOURLY_REPORT_ENABLED = os.getenv("HOURLY_REPORT_ENABLED", "True").lower() == "t
 # --- RECOMMENDATION SYSTEM ---
 MUSIC_HISTORY_FILE = os.getenv("MUSIC_HISTORY_FILE", "data/music_history.json")
 RECOMMENDER_MAX_HISTORY = int(os.getenv("RECOMMENDER_MAX_HISTORY", "50"))
-RECOMMENDER_ITUNES_LIMIT = int(os.getenv("RECOMMENDER_ITUNES_LIMIT", "3"))
+RECOMMENDER_ITUNES_LIMIT = int(os.getenv("RECOMMENDER_ITUNES_LIMIT", "5"))
 RECOMMENDER_ITUNES_TIMEOUT = int(os.getenv("RECOMMENDER_ITUNES_TIMEOUT", "5"))
+RECOMMENDER_NUM_CANDIDATES = int(os.getenv("RECOMMENDER_NUM_CANDIDATES", "5"))
+RECOMMENDER_LLM_TOKENS = int(os.getenv("RECOMMENDER_LLM_TOKENS", "400"))
+RECOMMENDER_LLM_TEMPERATURE = float(os.getenv("RECOMMENDER_LLM_TEMPERATURE", "0.8"))
+RECOMMENDER_SHUFFLE = os.getenv("RECOMMENDER_SHUFFLE", "True").lower() == "true"
+RECOMMENDER_CACHE_TTL = int(os.getenv("RECOMMENDER_CACHE_TTL", "3600"))
+RECOMMENDER_VERIFY_CACHE_SIZE = int(os.getenv("RECOMMENDER_VERIFY_CACHE_SIZE", "200"))
+# Optional comma-separated override for the curated offline catalog.
+_RECOMMENDER_FALLBACKS_ENV = os.getenv("RECOMMENDER_FALLBACK_TRACKS", "")
+RECOMMENDER_FALLBACK_TRACKS = (
+    [t.strip() for t in _RECOMMENDER_FALLBACKS_ENV.split("||") if t.strip()]
+    or None
+)

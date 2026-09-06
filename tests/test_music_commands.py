@@ -24,6 +24,7 @@ def _load_bot_module():
 
     fake_utils = types.ModuleType("utils")
     fake_utils.patch_ssl = lambda: None
+    fake_utils.setup_logger = lambda *args, **kwargs: MagicMock()
 
     fake_brain = types.ModuleType("modules.brain")
     fake_brain.Brain = type("Brain", (), {})

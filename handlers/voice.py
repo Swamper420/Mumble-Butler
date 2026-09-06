@@ -2,6 +2,41 @@ import re
 import config
 
 
+# Queries that carry no musical information on their own.
+GENERIC_MUSIC_QUERIES = frozenset({
+    "music", "musik", "musiikki", "musiikkia", "song", "songs", "tune", "tunes",
+    "biisi", "kappale", "jotain", "something", "anything", "whatever",
+})
+
+# Words that signal a mood/genre request rather than a concrete track.
+# ("play something chill" -> recommend; "play hotel california" -> direct play)
+VAGUE_MUSIC_WORDS = frozenset({
+    "something", "anything", "whatever", "chill", "relaxing", "relax",
+    "good", "nice", "great", "cool", "random", "surprise", "vibe", "vibes",
+    "mood", "genre", "music", "song", "songs", "tune", "tunes",
+    "jotain", "hyvää", "hyvaa", "rento", "rentoa", "tunnelma", "musiikki",
+    "musiikkia", "biisi", "kappale", "satunnainen", "satunnaista",
+})
+
+# Single-word queries that name a genre, not a track.
+GENRE_WORDS = frozenset({
+    "jazz", "rock", "pop", "techno", "lofi", "metal", "rap", "classical",
+    "edm", "house", "ambient", "blues", "funk", "soul", "punk", "disco",
+    "synthwave", "country", "reggae", "iskelmä", "iskelma", "suomipop",
+    "suomirap", "hevi", "klassinen",
+})
+
+MORE_LIKE_TRIGGERS = [
+    "more like this", "similar", "like this", "samanlaista",
+    "lisää tällaista", "lisaa tallaista", "tämän tapaista", "taman tapaista",
+]
+
+SURPRISE_TRIGGERS = [
+    "surprise me", "surprise", "yllätä", "yllata", "something random",
+    "random music", "satunnainen musiikki",
+]
+
+
 class VoiceHandler:
     def __init__(self, bot):
         self.bot = bot
@@ -118,21 +153,24 @@ class VoiceHandler:
             self.bot.say_async("Saatavilla olevat tilat ovat: one-shot, autoplay, repeat ja random.", user=user)
             return True
 
-        # 4. Recommend
+        # 4. Recommend (explicit "recommend / suosittele / ehdota")
         if self._has_trigger(content, config.VOICE_TRIGGERS['RECOMMEND']):
             self.bot.play_action_confirmation("MUSIC")
-            desc = content
-            for t in config.VOICE_TRIGGERS['RECOMMEND']:
-                desc = re.sub(r"\b" + re.escape(t) + r"\b", "", desc, flags=re.IGNORECASE)
-            song, vibe = self.bot.brain.recommend_song(
-                desc.strip() or "random music",
-                chat_context=self.bot.recent_transcripts,
-                return_meta=True
-            )
-            if song:
-                announcement = f"Jonossa: {song}. {vibe}" if vibe else f"Jonossa: {song}"
-                self.bot.say_async(announcement, user=user)
-                self.bot.play(song)
+            desc = self._strip_triggers(content, config.VOICE_TRIGGERS['RECOMMEND'])
+            self._recommend_and_play(user, desc.strip() or "random music")
+            return True
+
+        # 4b. "More like this" / "surprise me" — QoL shortcuts to the DJ.
+        if self._has_trigger(content, MORE_LIKE_TRIGGERS):
+            self.bot.play_action_confirmation("MUSIC")
+            last = self._last_played_track()
+            desc = f"more like {last}" if last else "random music"
+            self._recommend_and_play(user, desc)
+            return True
+
+        if self._has_trigger(content, SURPRISE_TRIGGERS):
+            self.bot.play_action_confirmation("MUSIC")
+            self._recommend_and_play(user, "random music")
             return True
 
         # 5. Play / Queue (Specific)
@@ -142,8 +180,19 @@ class VoiceHandler:
             if q:
                 query = q.group(1).strip()
                 if query:
+                    # Natural routing: vague/mood queries ("something chill",
+                    # "musiikkia", "jazz") go to the LLM DJ instead of a
+                    # literal YouTube search for those words.
+                    if self._is_generic_music_query(query):
+                        self.bot.play_action_confirmation("MUSIC")
+                        self._recommend_and_play(user, "random music")
+                        return True
+                    if self._is_vague_music_request(query):
+                        self.bot.play_action_confirmation("MUSIC")
+                        self._recommend_and_play(user, query)
+                        return True
                     self.bot.play_action_confirmation("MUSIC")
-                    self.bot.play(query)
+                    self._play_direct(user, query)
                     return True
             elif content.strip() in config.VOICE_TRIGGERS['PLAY_SPECIFIC']:
                 self.bot.play_action_confirmation("MUSIC")
@@ -153,15 +202,7 @@ class VoiceHandler:
         # 6. Play (Generic Music / "music")
         if self._has_trigger(content, config.VOICE_TRIGGERS['PLAY_MUSIC']):
             self.bot.play_action_confirmation("MUSIC")
-            rec, vibe = self.bot.brain.recommend_song(
-                "random music",
-                chat_context=self.bot.recent_transcripts,
-                return_meta=True
-            )
-            if rec:
-                announcement = f"Jonossa: {rec}. {vibe}" if vibe else f"Jonossa: {rec}"
-                self.bot.say_async(announcement, user=user)
-                self.bot.play(rec)
+            self._recommend_and_play(user, "random music")
             return True
 
         # 7. Resume (if paused)
@@ -228,6 +269,126 @@ class VoiceHandler:
             return True
 
         return False
+
+    # --- Music helpers ---------------------------------------------------
+
+    def _strip_triggers(self, content, triggers):
+        desc = content or ""
+        for t in triggers or []:
+            desc = re.sub(r"\b" + re.escape(t.lower()) + r"\b", "", desc,
+                          flags=re.IGNORECASE)
+        return re.sub(r"\s+", " ", desc).strip()
+
+    def _is_generic_music_query(self, query):
+        if not query or not query.strip():
+            return True
+        if query.strip().lower() in GENERIC_MUSIC_QUERIES:
+            return True
+        try:
+            recommender = getattr(getattr(self.bot, "brain", None),
+                                  "recommender", None)
+            if recommender is not None:
+                result = recommender.is_generic_query(query)
+                if isinstance(result, bool):
+                    return result
+        except Exception:
+            pass
+        return False
+
+    def _is_vague_music_request(self, query):
+        """True when the query names a mood/genre, not a concrete track."""
+        if not query:
+            return True
+        ql = query.strip().lower()
+        if not ql or ql in GENERIC_MUSIC_QUERIES:
+            return True
+        words = set(re.findall(r"\w+", ql))
+        if words & VAGUE_MUSIC_WORDS:
+            return True
+        if " - " in ql:
+            return False
+        if re.search(r"\bby\b", ql) and len(ql.split()) <= 8:
+            # "X by Y" with no vague words names a concrete track.
+            return False
+        if ql in GENRE_WORDS:
+            return True
+        return False
+
+    def _last_played_track(self):
+        try:
+            recommender = getattr(getattr(self.bot, "brain", None),
+                                  "recommender", None)
+            last = getattr(recommender, "last_played", None)
+            if isinstance(last, str) and last.strip():
+                return last.strip()
+        except Exception:
+            pass
+        return None
+
+    def _chat_context(self):
+        try:
+            return getattr(self.bot, "recent_transcripts", None)
+        except Exception:
+            return None
+
+    def _recommend_and_play(self, user, desc):
+        """Ask the LLM DJ for a track, announce it, and queue it."""
+        try:
+            song, vibe = self.bot.brain.recommend_song(
+                desc,
+                chat_context=self._chat_context(),
+                return_meta=True
+            )
+        except Exception:
+            return
+        if not song:
+            return
+        if isinstance(song, (list, tuple)):
+            song = song[0] if song else None
+        if not song:
+            return
+        announcement = f"Jonossa: {song}. {vibe}" if vibe else f"Jonossa: {song}"
+        try:
+            self.bot.say_async(announcement, user=user)
+        except Exception:
+            pass
+        try:
+            self.bot.play(song)
+        except Exception:
+            pass
+
+    def _play_direct(self, user, query):
+        """Play a concrete query verbatim,canonicalizing only for history.
+
+        The original query is always what gets queued (so YouTube search
+        behaves exactly as before); the iTunes-canonical form is used for
+        history dedup and for a short confirmation when it differs.
+        """
+        canonical = None
+        try:
+            recommender = getattr(getattr(self.bot, "brain", None),
+                                  "recommender", None)
+            if recommender is not None:
+                resolved = recommender.resolve_track(query)
+                if isinstance(resolved, str) and resolved.strip():
+                    canonical = resolved.strip()
+                try:
+                    add = getattr(recommender, "add_to_history", None)
+                    if callable(add):
+                        add(canonical or query)
+                except Exception:
+                    pass
+        except Exception:
+            canonical = None
+        try:
+            self.bot.play(query)
+        except Exception:
+            return
+        if canonical and canonical.lower() != query.lower():
+            try:
+                self.bot.say_async(f"Jonossa: {canonical}", user=user)
+            except Exception:
+                pass
 
     def _parse_reminder(self, content):
         # 1. English pattern

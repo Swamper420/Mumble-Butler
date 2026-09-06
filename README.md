@@ -10,7 +10,7 @@ A voice-activated AI butler for Mumble. Listens for a wake word, transcribes spe
 | 🔔 **Wake Word** | [openWakeWord](https://github.com/dscripka/openWakeWord) with real-time streaming detection |
 | 🧠 **LLM API** | External [Ollama](https://ollama.com) API integration supporting any model with streaming responses |
 | 🗣️ **Text-to-Speech** | OpenAI-compatible TTS API with custom voice selection and sentence-level streaming |
-| 🎵 **Music** | YouTube playback, LLM-seeded recommendations via iTunes API, history-aware deduplication — all via [botamusique](https://github.com/azlux/botamusique) |
+| 🎵 **Music** | YouTube playback, LLM DJ recommendations with best-match iTunes resolution, history-aware dedup with variety, instant fast-path for named tracks — all via [botamusique](https://github.com/azlux/botamusique) |
 | 💬 **Dual Interface** | Full command set via both voice and Mumble text chat |
 | 🕒 **Hourly Reports** | Context-aware room status updates based on who's present and recent conversation |
 | ⏰ **Reminders** | Natural language spoken reminders (`remind me in 10 minutes about standup`) |
@@ -54,9 +54,10 @@ main.py → MadnessBot (bot.py)
 | Command | Action |
 |---|---|
 | `<wake> <anything>` | Free-form LLM conversation |
-| `<wake> play <query>` / `queue <query>` | YouTube playback |
+| `<wake> play <query>` / `queue <query>` | YouTube playback (concrete tracks play verbatim; moods like "something chill" or "jazz" go to the DJ instead) |
 | `<wake> music` | Random LLM-recommended song |
 | `<wake> recommend <vibe>` | Curated recommendation |
+| `<wake> more like this` / `surprise me` | Recommendation based on the last track / random pick |
 | `<wake> stop` / `skip` / `repeat <n>` | Playback control |
 | `<wake> volume <0-100>` / `mode <name>` | Volume & mode |
 | `<wake> search <query>` | Live web search query |
@@ -76,9 +77,10 @@ main.py → MadnessBot (bot.py)
 | `?prompt <text>` / `?prompt reset` | Dynamic system prompt |
 | `?memory` / `?forget` / `?undo` | Memory controls |
 | `?listen` | Toggle voice listening |
-| `?play` `?stop` `?pause` `?resume` `?skip` `?clear` `?queue` `?now` | Music controls |
+| `?play` `?stop` `?pause` `?resume` `?skip` `?clear` `?queue` `?now` | Music controls (`?play` with a mood/genre routes to the DJ) |
 | `?volume <0-100>` / `?repeat <n>` / `?mode <name>` | Playback settings |
-| `?recommend <vibe>` | LLM music recommendation |
+| `?recommend <vibe> [count]` | LLM music recommendation (up to 5 tracks queued) |
+| `?surprise` / `?history` / `?dislike` | Random pick / recently played / skip + avoid last track |
 | `?ping` | Pong! |
 
 ### TTS Voices
@@ -140,6 +142,13 @@ All settings via `.env` or environment variables. See [config.py](config.py) for
 | `SYSTEM_PROMPT` | *(see config.py)* | LLM system prompt |
 | `MUSIC_HISTORY_FILE` | `data/music_history.json` | Recommendation history |
 | `RECOMMENDER_MAX_HISTORY` | `50` | Max history entries |
+| `RECOMMENDER_ITUNES_LIMIT` | `5` | iTunes candidates scored per query |
+| `RECOMMENDER_ITUNES_TIMEOUT` | `5` | iTunes request timeout (seconds) |
+| `RECOMMENDER_NUM_CANDIDATES` | `5` | LLM DJ candidates per recommendation |
+| `RECOMMENDER_LLM_TOKENS` | `400` | Max tokens for the DJ prompt |
+| `RECOMMENDER_LLM_TEMPERATURE` | `0.8` | DJ creativity |
+| `RECOMMENDER_SHUFFLE` | `True` | Vary picks instead of always the first candidate |
+| `RECOMMENDER_CACHE_TTL` | `3600` | iTunes verification cache TTL (seconds) |
 
 </details>
 
