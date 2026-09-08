@@ -19,8 +19,12 @@ A voice-activated AI butler for Mumble. Listens for a wake word, transcribes spe
 ## Quick Start
 
 ```bash
-# 1. Install
-pip install -r requirements.txt   # also need: ffmpeg, a running Mumble server
+# 1. Install (requires uv: https://docs.astral.sh/uv/ — Python 3.11 is pinned
+#    in .python-version because openwakeword's tflite-runtime dependency has
+#    no wheels for Python 3.12+)
+uv sync                          # creates .venv and installs dependencies
+
+# also needed: ffmpeg, a running Mumble server
 
 # 2. Configure
 cp .env.example .env              # edit with your server details + Ollama settings
@@ -29,7 +33,7 @@ cp .env.example .env              # edit with your server details + Ollama setti
 ollama run gemma4-e2b
 
 # 4. Run
-python main.py
+uv run python main.py
 ```
 
 ## Architecture
@@ -159,5 +163,5 @@ Requires [botamusique](https://github.com/azlux/botamusique) running in the same
 ## Tests
 
 ```bash
-python -m pytest tests/
+uv run pytest tests/
 ```

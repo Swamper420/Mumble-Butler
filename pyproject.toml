@@ -1,0 +1,28 @@
+[project]
+name = "mumble-butler"
+version = "0.1.0"
+description = "A voice-activated AI butler for Mumble"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    # Not on PyPI as a working release (1.3+ sdists are broken: setup.py
+    # reads a requirements.txt missing from the sdist). Track git main
+    # instead; uv.lock pins the exact commit.
+    "pymumble @ git+https://github.com/azlux/pymumble.git",
+    "requests",
+    # tflite-runtime 2.14 (via openwakeword) was built against numpy 1.x and
+    # fails to import under numpy 2 ("_ARRAY_API not found"). Keep numpy 1.x.
+    "numpy>=1.26,<2",
+    "python-dotenv",
+    "openwakeword",
+    "onnxruntime",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
