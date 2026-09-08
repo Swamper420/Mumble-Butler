@@ -242,7 +242,17 @@ class VoiceHandler:
             self.bot.repeat_music(count)
             return True
 
-        # 12. Remind
+        # 12. Radio
+        if self._has_trigger(content, config.VOICE_TRIGGERS.get('RADIO', [])):
+            self.bot.play_action_confirmation("RADIO")
+            m = re.search(r"\b(?:radio)\b\s+(.+)", content)
+            if m:
+                self.bot.radio(m.group(1).strip())
+            else:
+                self.bot.say_async("Minkä radioaseman?", user=user)
+            return True
+
+        # 13. Remind
         if self._has_trigger(content, config.VOICE_TRIGGERS.get('REMIND', [])):
             self.bot.play_action_confirmation("REMIND")
             reminder = self._parse_reminder(content)
@@ -254,7 +264,7 @@ class VoiceHandler:
                 self.bot.say_async("Kokeile sanoa: muistuta minua 10 minuutin kuluttua asiasta X.", user=user)
             return True
 
-        # 13. Status
+        # 14. Status
         if self._has_trigger(content, config.VOICE_TRIGGERS.get('STATUS', [])):
             self.bot.play_action_confirmation("STATUS")
             status = self.bot.get_status()
@@ -262,7 +272,7 @@ class VoiceHandler:
             self.bot.say_async(summary, user=user)
             return True
 
-        # 14. Ping
+        # 15. Ping
         if self._has_trigger(content, config.VOICE_TRIGGERS.get('PING', [])):
             self.bot.play_action_confirmation("PING")
             self.bot.say_async("Pong! Olen täällä.", user=user)

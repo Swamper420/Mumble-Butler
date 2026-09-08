@@ -93,7 +93,8 @@ class MusicCommandForwardingTests(unittest.TestCase):
         self.assertEqual(madness_bot.resume_music(), "!play")
         self.assertEqual(madness_bot.request_now_playing(), "!np")
         self.assertEqual(madness_bot.request_queue(), "!queue")
-        self.assertEqual(sent, ["!yplay lofi mix", "!file local track", "!play", "!np", "!queue"])
+        self.assertEqual(madness_bot.radio("lofi radio"), "!radio lofi radio")
+        self.assertEqual(sent, ["!yplay lofi mix", "!file local track", "!play", "!np", "!queue", "!radio lofi radio"])
 
     def test_text_handler_forwards_status_commands(self):
         bot = MagicMock()
@@ -106,6 +107,24 @@ class MusicCommandForwardingTests(unittest.TestCase):
         bot.request_now_playing.assert_called_once_with()
         bot.request_queue.assert_called_once_with()
 
+    def test_text_handler_forwards_radio_command(self):
+        bot = MagicMock()
+        bot.mumble = SimpleNamespace(users=_FakeUsers({2: {"name": "Tester"}}))
+        handler = TextHandler(bot)
+
+        handler.handle(_make_message("?radio lofi hip hop"))
+        bot.radio.assert_called_once_with("lofi hip hop")
+
+    def test_text_handler_radio_without_arg_sends_usage(self):
+        bot = MagicMock()
+        bot.mumble = SimpleNamespace(users=_FakeUsers({2: {"name": "Tester"}}))
+        handler = TextHandler(bot)
+
+        handler.handle(_make_message("?radio"))
+        bot.radio.assert_not_called()
+        bot.send_chat.assert_called_once()
+        self.assertIn("Usage", bot.send_chat.call_args[0][0])
+
     def test_voice_handler_uses_play_file_for_file_requests(self):
         bot = MagicMock()
         bot.chime_pcm = None
@@ -117,6 +136,18 @@ class MusicCommandForwardingTests(unittest.TestCase):
 
         self.assertTrue(handled)
         bot.play_file.assert_called_once_with("local track")
+
+    def test_voice_handler_routes_radio_with_station(self):
+        bot = MagicMock()
+        bot.chime_pcm = None
+        bot.mumble = None
+        bot.listening_enabled = True
+        handler = VoiceHandler(bot)
+
+        handled = handler.handle("Tester", "obama radio lofi hip hop")
+
+        self.assertTrue(handled)
+        bot.radio.assert_called_once_with("lofi hip hop")
 
     def test_stop_speaking_clears_pending_tts_and_audio_buffer(self):
         bot_module = _load_bot_module()

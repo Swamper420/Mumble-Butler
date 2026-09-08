@@ -688,6 +688,7 @@ class MadnessBot:
     def request_now_playing(self): return self._send_music_command("NOW_PLAYING")
     def request_queue(self): return self._send_music_command("QUEUE")
     def clear_queue(self): return self._send_music_command("CLEAR")
+    def radio(self, station=""): return self._send_music_command("RADIO", station)
 
     def on_sound_received(self, user, sound_chunk):
         if not self.listening_enabled or not user: return

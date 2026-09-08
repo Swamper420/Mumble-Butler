@@ -256,6 +256,11 @@ class TextHandler:
                 self.bot.send_chat("Usage: ?repeat <times>")
         elif cmd == "?mode":
             self.bot.set_mode(arg.lower())
+        elif cmd == "?radio":
+            if arg:
+                self.bot.radio(arg)
+            else:
+                self.bot.send_chat("<b>Usage:</b> ?radio &lt;station name&gt;")
 
     # --- Music helpers ---------------------------------------------------
 
