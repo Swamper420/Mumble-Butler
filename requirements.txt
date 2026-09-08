@@ -2,5 +2,10 @@ pymumble_py3
 requests
 numpy
 python-dotenv
-openwakeword
+# openwakeword 0.6.0 (PyPI) depends on tflite-runtime, which has no wheels for
+# Python 3.12+ on Linux -> pip silently backtracks to 0.4.0 (no
+# utils.download_models, old Model API). Pin >=0.6.0 so the failure is loud,
+# and on Python 3.12+ prefer git main (uses ai-edge-litert) or Python 3.11:
+#   pip install "git+https://github.com/dscripka/openWakeWord.git"
+openwakeword>=0.6.0
 onnxruntime

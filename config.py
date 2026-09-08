@@ -48,6 +48,10 @@ MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "True").lower() == "true"
 
 # --- WAKEWORD CONFIG ---
 WAKEWORD_LIBRARY = os.getenv("WAKEWORD_LIBRARY", "openwakeword")
+# "onnx" is the default because onnxruntime has wheels for Python 3.12+,
+# while openwakeword 0.6.0's default "tflite" framework needs tflite-runtime
+# (no cp312+ wheels on Linux -> pip backtracks to openwakeword 0.4.0).
+WAKEWORD_INFERENCE_FRAMEWORK = os.getenv("WAKEWORD_INFERENCE_FRAMEWORK", "onnx")
 WAKEWORD_MODEL_PATHS = [p.strip() for p in os.getenv("WAKEWORD_MODEL_PATHS", "").split(",") if p.strip()]
 WAKEWORD_BUILTIN_MODELS = [m.strip() for m in os.getenv("WAKEWORD_BUILTIN_MODELS", "hey_jarvis").split(",") if m.strip()]
 WAKEWORD_THRESHOLD = float(os.getenv("WAKEWORD_THRESHOLD", "0.5"))
