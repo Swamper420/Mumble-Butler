@@ -9,8 +9,59 @@ except ImportError:
     OPENWAKEWORD_AVAILABLE = False
 
 
-def _ensure_base_models():
-    """Download base models (melspectrogram/embedding/VAD) if missing.
+def _models_dir():
+    """Resolve openwakeword's bundled resources/models dir (None if unresolvable)."""
+    try:
+        import openwakeword
+        import pathlib
+        candidates = []
+        try:
+            candidates.append(
+                os.path.join(
+                    os.path.dirname(getattr(openwakeword, "__file__", "")),
+                    "resources", "models",
+                )
+            )
+        except Exception:
+            pass
+        try:
+            candidates.append(
+                os.path.join(
+                    str(pathlib.Path(openwakeword.__file__).parent),
+                    "resources", "models",
+                )
+            )
+        except Exception:
+            pass
+        for c in candidates:
+            if c and os.path.isdir(c):
+                return c
+        return candidates[0] if candidates and candidates[0] else None
+    except Exception:
+        return None
+
+
+def _wakeword_file_present(models_dir, name, framework):
+    """True only if the bundled file for builtin `name` exists in the framework's extension.
+
+    Must be framework-strict: an .onnx Model() cannot use a .tflite file and
+    vice versa. Previously an either-extension check caused a no-op ensure
+    followed by NO_SUCHFILE (e.g. alexa_v0.1.tflite present but
+    alexa_v0.1.onnx requested).
+    """
+    if not models_dir or not os.path.isdir(models_dir):
+        return False
+    norm = name.replace(" ", "_").lower()
+    wanted = ".onnx" if (framework or "onnx") == "onnx" else ".tflite"
+    try:
+        files = os.listdir(models_dir)
+    except OSError:
+        files = []
+    return any(norm in f.lower() and f.lower().endswith(wanted) for f in files)
+
+
+def _ensure_base_models(requested_models=None, framework="onnx"):
+    """Download base + requested wakeword models if missing.
 
     Version-tolerant: openwakeword==0.4.0 has no
     ``openwakeword.utils.download_models`` (added in 0.5.0+). On modern
@@ -21,52 +72,39 @@ def _ensure_base_models():
     when it exists AND files are actually missing.
     """
     try:
-        import openwakeword
-        import pathlib
-        default_dir = os.path.join(
-            os.path.dirname(getattr(openwakeword, "__file__", "")),
-            "resources", "models",
-        )
+        default_dir = _models_dir()
+        if not default_dir:
+            default_dir = ""
         # Base feature models are required regardless of wakeword choice.
-        # Check for either .onnx or .tflite variants.
+        # Framework-strict: an ONNX Model() needs melspectrogram.onnx, a
+        # .tflite file does NOT satisfy it (and vice versa).
+        wanted_ext = ".onnx" if (framework or "onnx") == "onnx" else ".tflite"
         needed = ("melspectrogram", "embedding_model")
         missing = [
             name for name in needed
-            if not (
-                os.path.exists(os.path.join(default_dir, name + ".onnx"))
-                or os.path.exists(os.path.join(default_dir, name + ".tflite"))
-            )
+            if not os.path.exists(os.path.join(default_dir, name + wanted_ext))
         ]
-        # Also check pathlib fallback if __file__ was odd
-        if not os.path.isdir(default_dir):
-            try:
-                alt = os.path.join(
-                    str(pathlib.Path(openwakeword.__file__).parent),
-                    "resources", "models",
-                )
-                if os.path.isdir(alt):
-                    default_dir = alt
-                    missing = [
-                        name for name in needed
-                        if not (
-                            os.path.exists(os.path.join(default_dir, name + ".onnx"))
-                            or os.path.exists(os.path.join(default_dir, name + ".tflite"))
-                        )
-                    ]
-                else:
-                    missing = list(needed)
-            except Exception:
-                missing = list(needed)
+        # Requested wakeword models (builtins like "alexa", "hey_jarvis").
+        # Custom file paths that already exist on disk need no download.
+        missing_wake = []
+        for name in (requested_models or []):
+            if not name:
+                continue
+            if os.path.exists(name):
+                continue
+            if not _wakeword_file_present(default_dir, name, framework):
+                missing_wake.append(name)
 
-        if not missing:
+        if not missing and not missing_wake:
             return
 
         import openwakeword.utils as oww_utils
         download_fn = getattr(oww_utils, "download_models", None)
         if not callable(download_fn):
+            what = ", ".join(missing + missing_wake) or "models"
             print(
-                "⚠️ openWakeWord base models missing "
-                f"({', '.join(missing)}) but this openwakeword version "
+                "⚠️ openWakeWord models missing "
+                f"({what}) but this openwakeword version "
                 "has no utils.download_models (likely v0.4.0 installed due to "
                 "Python 3.12+ backtrack; tflite-runtime has no wheels there). "
                 "Upgrade: pip install -U 'openwakeword>=0.6.0' on Python <=3.11, "
@@ -75,12 +113,22 @@ def _ensure_base_models():
             )
             return
 
-        print("📥 Downloading openWakeWord base models if missing...")
+        if missing_wake:
+            print(f"📥 Downloading openWakeWord models if missing (needed: {', '.join(missing + missing_wake)})...")
+        else:
+            print("📥 Downloading openWakeWord base models if missing...")
         try:
-            os.makedirs(default_dir, exist_ok=True)
+            if default_dir:
+                os.makedirs(default_dir, exist_ok=True)
         except Exception:
             pass
-        download_fn()
+        try:
+            # Selective download also fetches missing base/VAD models
+            # (upstream always ensures FEATURE_MODELS + VAD_MODELS first).
+            download_fn(missing_wake)
+        except TypeError:
+            # Very old download_models() takes no args.
+            download_fn()
     except ImportError as e:
         print(f"⚠️ Could not check/download openWakeWord base models: {e}")
     except PermissionError as e:
@@ -99,15 +147,30 @@ class WakewordDetector:
         
         if self.enabled:
             try:
-                # Ensure all required base models (melspectrogram, embedding, etc.) are present.
+                # Ensure base + requested wakeword models are present.
                 # Version-tolerant: no-op when nothing is missing, graceful warning on old versions.
-                _ensure_base_models()
+                _ensure_base_models(
+                    requested_models=list(config.WAKEWORD_BUILTIN_MODELS or [])
+                    + [p for p in (config.WAKEWORD_MODEL_PATHS or []) if not os.path.exists(p)],
+                    framework=getattr(config, "WAKEWORD_INFERENCE_FRAMEWORK", "onnx") or "onnx",
+                )
 
                 print(f"🎙️ Loading openWakeWord (builtins: {config.WAKEWORD_BUILTIN_MODELS}, custom: {config.WAKEWORD_MODEL_PATHS})...")
                 self.model = self.create_model_instance()
                 print("✅ openWakeWord Loaded Successfully")
             except Exception as e:
-                print(f"❌ openWakeWord Load Error: {e}")
+                msg = str(e)
+                if "NO_SUCHFILE" in msg or "File doesn't exist" in msg:
+                    print(
+                        f"❌ openWakeWord Load Error: {e}\n"
+                        f"   → A bundled .onnx is missing and auto-download didn't provide it.\n"
+                        f"   Fix (once, in your venv): python -c \"import openwakeword.utils; "
+                        f"openwakeword.utils.download_models({list(config.WAKEWORD_BUILTIN_MODELS or [])})\"\n"
+                        f"   Or set WAKEWORD_BUILTIN_MODELS to a model you already have "
+                        f"(e.g. hey_jarvis), or WAKEWORD_LIBRARY=disabled to bypass."
+                    )
+                else:
+                    print(f"❌ openWakeWord Load Error: {e}")
                 self.enabled = False
         elif config.WAKEWORD_LIBRARY == "openwakeword" and not OPENWAKEWORD_AVAILABLE:
             print("⚠️ openwakeword is configured but library is not installed/available. Wakeword detection will be bypassed (all audio processed).")
